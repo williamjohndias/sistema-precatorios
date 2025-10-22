@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Logs de Alterações - Sistema Precatórios</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
+</head>
+<body>
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <span class="navbar-brand mb-0 h1">
+                <i class="fas fa-history me-2"></i>
+                Logs de Alterações
+            </span>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="{{ url_for('index') }}">
+                    <i class="fas fa-table me-1"></i>
+                    Voltar aos Precatórios
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-4">
+        <!-- Filtros -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-filter me-2"></i>
+                            Filtros
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <form method="GET" class="row g-3">
+                            <div class="col-md-3">
+                                <label for="filter_usuario" class="form-label">Usuário</label>
+                                <input type="text" class="form-control" id="filter_usuario" 
+                                       name="filter_usuario" value="{{ filters.get('usuario', '') }}"
+                                       placeholder="Filtrar por usuário">
+                            </div>
+                            <div class="col-md-3">
+                                <label for="filter_campo" class="form-label">Campo Alterado</label>
+                                <input type="text" class="form-control" id="filter_campo" 
+                                       name="filter_campo" value="{{ filters.get('campo', '') }}"
+                                       placeholder="Filtrar por campo">
+                            </div>
+                            <div class="col-md-3">
+                                <label for="filter_precatorio" class="form-label">Precatório</label>
+                                <input type="text" class="form-control" id="filter_precatorio" 
+                                       name="filter_precatorio" value="{{ filters.get('precatorio', '') }}"
+                                       placeholder="Filtrar por precatório">
+                            </div>
+                            <div class="col-md-3">
+                                <label for="filter_data_inicio" class="form-label">Data Início</label>
+                                <input type="date" class="form-control" id="filter_data_inicio" 
+                                       name="filter_data_inicio" value="{{ filters.get('data_inicio', '') }}">
+                            </div>
+                            <div class="col-md-3">
+                                <label for="filter_data_fim" class="form-label">Data Fim</label>
+                                <input type="date" class="form-control" id="filter_data_fim" 
+                                       name="filter_data_fim" value="{{ filters.get('data_fim', '') }}">
+                            </div>
+                            <div class="col-md-3 d-flex align-items-end">
+                                <button type="submit" class="btn btn-primary me-2">
+                                    <i class="fas fa-search me-1"></i>
+                                    Filtrar
+                                </button>
+                                <a href="{{ url_for('logs') }}" class="btn btn-outline-secondary">
+                                    <i class="fas fa-times me-1"></i>
+                                    Limpar
+                                </a>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabela de Logs -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="fas fa-list me-2"></i>
+                            Histórico de Alterações
+                        </h5>
+                        <span class="badge bg-info">
+                            {{ pagination.total_count }} registros
+                        </span>
+                    </div>
+                    <div class="card-body p-0">
+                        {% if logs %}
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th class="text-center">Data/Hora</th>
+                                        <th class="text-center">Usuário</th>
+                                        <th class="text-center">Precatório</th>
+                                        <th class="text-center">Organização</th>
+                                        <th class="text-center">Campo</th>
+                                        <th class="text-center">Alteração</th>
+                                        <th class="text-center">IP</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for log in logs %}
+                                    <tr>
+                                        <td class="text-center">
+                                            <small class="text-muted">
+                                                {{ log.data_alteracao.strftime('%d/%m/%Y') }}<br>
+                                                {{ log.data_alteracao.strftime('%H:%M:%S') }}
+                                            </small>
+                                        </td>
+                                        <td class="text-center">
+                                            <span class="badge bg-secondary">
+                                                {{ log.usuario }}
+                                            </span>
+                                        </td>
+                                        <td class="text-center">
+                                            <strong>{{ log.precatorio or 'N/A' }}</strong>
+                                        </td>
+                                        <td class="text-center">
+                                            {{ log.organizacao or 'N/A' }}
+                                        </td>
+                                        <td class="text-center">
+                                            <span class="badge bg-warning text-dark">
+                                                {{ log.campo_alterado }}
+                                            </span>
+                                        </td>
+                                        <td class="text-center">
+                                            <div class="change-display">
+                                                <span class="old-value">{{ log.valor_anterior or '-' }}</span>
+                                                <span class="change-arrow">→</span>
+                                                <span class="new-value">{{ log.valor_novo or '-' }}</span>
+                                            </div>
+                                        </td>
+                                        <td class="text-center">
+                                            <small class="text-muted">
+                                                {{ log.ip_address or '-' }}
+                                            </small>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% else %}
+                        <div class="text-center py-5">
+                            <i class="fas fa-history fa-3x text-muted mb-3"></i>
+                            <h5 class="text-muted">Nenhum log encontrado</h5>
+                            <p class="text-muted">Não há registros de alterações para os filtros aplicados.</p>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Paginação -->
+        {% if pagination.total_pages > 1 %}
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body">
+                        <nav aria-label="Paginação">
+                            <ul class="pagination justify-content-center mb-0">
+                                {% if pagination.has_prev %}
+                                <li class="page-item">
+                                    <a class="page-link" href="{{ url_for('logs', **dict(request.args, page=pagination.page-1)) }}">
+                                        <i class="fas fa-chevron-left"></i> Anterior
+                                    </a>
+                                </li>
+                                {% endif %}
+                                
+                                {% for page_num in range(1, pagination.total_pages + 1) %}
+                                    {% if page_num == pagination.page %}
+                                    <li class="page-item active">
+                                        <span class="page-link">{{ page_num }}</span>
+                                    </li>
+                                    {% elif page_num <= 3 or page_num > pagination.total_pages - 3 or (page_num >= pagination.page - 1 and page_num <= pagination.page + 1) %}
+                                    <li class="page-item">
+                                        <a class="page-link" href="{{ url_for('logs', **dict(request.args, page=page_num)) }}">{{ page_num }}</a>
+                                    </li>
+                                    {% elif page_num == 4 and pagination.page > 5 %}
+                                    <li class="page-item disabled">
+                                        <span class="page-link">...</span>
+                                    </li>
+                                    {% elif page_num == pagination.total_pages - 3 and pagination.page < pagination.total_pages - 4 %}
+                                    <li class="page-item disabled">
+                                        <span class="page-link">...</span>
+                                    </li>
+                                    {% endif %}
+                                {% endfor %}
+                                
+                                {% if pagination.has_next %}
+                                <li class="page-item">
+                                    <a class="page-link" href="{{ url_for('logs', **dict(request.args, page=pagination.page+1)) }}">
+                                        Próximo <i class="fas fa-chevron-right"></i>
+                                    </a>
+                                </li>
+                                {% endif %}
+                            </ul>
+                        </nav>
+                        
+                        <div class="text-center mt-2">
+                            <small class="text-muted">
+                                Página {{ pagination.page }} de {{ pagination.total_pages }} 
+                                ({{ pagination.total_count }} registros)
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Loading Spinner -->
+    <div id="loadingSpinner" class="position-fixed top-50 start-50 translate-middle" style="display: none;">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Carregando...</span>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
