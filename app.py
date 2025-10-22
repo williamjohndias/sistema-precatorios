@@ -442,11 +442,22 @@ def logs():
                 filters[field] = value
         
         # Obter logs (simplificado para Vercel)
-        result = {'data': [], 'pagination': {}}
-        
+        # Por enquanto retorna lista vazia com estrutura de paginação válida
+        pagination = {
+            'page': page,
+            'per_page': per_page,
+            'total': 0,
+            'total_count': 0,
+            'total_pages': 0,
+            'has_prev': False,
+            'has_next': False,
+            'prev_num': None,
+            'next_num': None
+        }
+
         return render_template('logs.html',
-                             logs=result['data'],
-                             pagination=result['pagination'],
+                             logs=[],
+                             pagination=pagination,
                              filters=filters)
     
     except Exception as e:
