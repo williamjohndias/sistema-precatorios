@@ -26,11 +26,11 @@ app.secret_key = os.environ.get('SECRET_KEY', 'sua_chave_secreta_aqui')
 
 # Configuração do banco de dados usando variáveis de ambiente
 DB_CONFIG = {
-    'host': os.environ.get('DB_HOST', 'bdunicoprecs.c50cwuocuwro.sa-east-1.rds.amazonaws.com'),
+    'host': os.environ.get('DB_HOST'),
     'port': int(os.environ.get('DB_PORT', 5432)),
-    'user': os.environ.get('DB_USER', 'postgres'),
-    'password': os.environ.get('DB_PASSWORD', '$P^iFe27^YP5cpBU3J&tqa'),
-    'database': os.environ.get('DB_NAME', 'OCSC')
+    'user': os.environ.get('DB_USER'),
+    'password': os.environ.get('DB_PASSWORD'),
+    'database': os.environ.get('DB_NAME')
 }
 
 TABLE_NAME = 'precatorios'
