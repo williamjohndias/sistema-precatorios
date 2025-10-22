@@ -157,41 +157,135 @@ class DatabaseManager:
             logger.error(f"Erro ao buscar precatórios: {e}")
             return {'data': [], 'pagination': {}}
     
-    def update_precatorio(self, precatorio_id: str, updates: Dict[str, Any], 
+    def get_logs_paginated(self, page: int = 1, per_page: int = 50, filters: Dict[str, str] = None) -> Dict[str, Any]:
+        """Obtém logs de alterações com paginação e filtros"""
+        try:
+            # Construir query base
+            base_query = """
+                SELECT id, data_alteracao, usuario, precatorio, organizacao,
+                       campo_alterado, valor_anterior, valor_novo, ip_address
+                FROM precatorios_logs
+            """
+            count_query = "SELECT COUNT(*) FROM precatorios_logs"
+
+            # Adicionar filtros
+            where_conditions = []
+            params = []
+
+            if filters:
+                if filters.get('usuario'):
+                    where_conditions.append("usuario ILIKE %s")
+                    params.append(f"%{filters['usuario']}%")
+
+                if filters.get('campo'):
+                    where_conditions.append("campo_alterado ILIKE %s")
+                    params.append(f"%{filters['campo']}%")
+
+                if filters.get('precatorio'):
+                    where_conditions.append("precatorio ILIKE %s")
+                    params.append(f"%{filters['precatorio']}%")
+
+                if filters.get('data_inicio'):
+                    where_conditions.append("DATE(data_alteracao) >= %s")
+                    params.append(filters['data_inicio'])
+
+                if filters.get('data_fim'):
+                    where_conditions.append("DATE(data_alteracao) <= %s")
+                    params.append(filters['data_fim'])
+
+            if where_conditions:
+                where_clause = " WHERE " + " AND ".join(where_conditions)
+                base_query += where_clause
+                count_query += where_clause
+
+            # Adicionar ordenação (mais recentes primeiro)
+            base_query += " ORDER BY data_alteracao DESC"
+
+            # Adicionar paginação
+            offset = (page - 1) * per_page
+            base_query += f" LIMIT {per_page} OFFSET {offset}"
+
+            # Executar contagem
+            self.cursor.execute(count_query, params)
+            count_result = self.cursor.fetchone()
+            total_count = count_result['count'] if isinstance(count_result, dict) else count_result[0]
+
+            # Executar query principal
+            self.cursor.execute(base_query, params)
+            data = self.cursor.fetchall()
+
+            # Calcular paginação
+            total_pages = (total_count + per_page - 1) // per_page
+
+            pagination = {
+                'page': page,
+                'per_page': per_page,
+                'total': total_count,
+                'total_count': total_count,
+                'total_pages': total_pages,
+                'has_prev': page > 1,
+                'has_next': page < total_pages,
+                'prev_num': page - 1 if page > 1 else None,
+                'next_num': page + 1 if page < total_pages else None
+            }
+
+            return {
+                'data': [dict(row) for row in data],
+                'pagination': pagination
+            }
+
+        except psycopg2.Error as e:
+            logger.error(f"Erro ao buscar logs: {e}")
+            return {
+                'data': [],
+                'pagination': {
+                    'page': page,
+                    'per_page': per_page,
+                    'total': 0,
+                    'total_count': 0,
+                    'total_pages': 0,
+                    'has_prev': False,
+                    'has_next': False,
+                    'prev_num': None,
+                    'next_num': None
+                }
+            }
+
+    def update_precatorio(self, precatorio_id: str, updates: Dict[str, Any],
                           usuario: str = 'Sistema Web', ip_address: str = None, user_agent: str = None) -> bool:
         """Atualiza um precatório específico - otimizado para Vercel"""
         try:
             # Preparar campos e valores para atualização
             fields = []
             values = []
-            
+
             for field, value in updates.items():
                 if field != 'id':  # Não atualizar a chave primária
                     fields.append(f"{field} = %s")
                     values.append(value)
-            
+
             if not fields:
                 return False
-            
+
             # Adicionar timestamp de atualização
             fields.append("data_atualizacao = %s")
             values.append(get_brazil_time().replace(tzinfo=None))
-            
+
             # Adicionar ID do precatório para WHERE
             values.append(precatorio_id)
-            
+
             query = f"""
-                UPDATE {TABLE_NAME} 
+                UPDATE {TABLE_NAME}
                 SET {', '.join(fields)}
                 WHERE id = %s
             """
-            
+
             self.cursor.execute(query, values)
             self.connection.commit()
-            
+
             logger.info(f"Precatório ID {precatorio_id} atualizado com sucesso")
             return True
-            
+
         except psycopg2.Error as e:
             logger.error(f"Erro ao atualizar precatório {precatorio_id}: {e}")
             if self.connection:
@@ -440,24 +534,13 @@ def logs():
             value = request.args.get(f'filter_{field}', '').strip()
             if value:
                 filters[field] = value
-        
-        # Obter logs (simplificado para Vercel)
-        # Por enquanto retorna lista vazia com estrutura de paginação válida
-        pagination = {
-            'page': page,
-            'per_page': per_page,
-            'total': 0,
-            'total_count': 0,
-            'total_pages': 0,
-            'has_prev': False,
-            'has_next': False,
-            'prev_num': None,
-            'next_num': None
-        }
+
+        # Obter logs do banco de dados
+        result = db_manager.get_logs_paginated(page=page, per_page=per_page, filters=filters)
 
         return render_template('logs.html',
-                             logs=[],
-                             pagination=pagination,
+                             logs=result['data'],
+                             pagination=result['pagination'],
                              filters=filters)
     
     except Exception as e:
