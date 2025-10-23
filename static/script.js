@@ -534,33 +534,28 @@ function confirmBulkUpdate() {
     });
 }
 
-// Atualizar event listeners para checkboxes
-function setupEventListeners() {
-    // Event listeners existentes...
-    
-    // Adicionar listeners para checkboxes de seleção
-    document.addEventListener('change', function(e) {
-        if (e.target.classList.contains('row-checkbox')) {
-            updateSelectedRecordsDisplay();
-            
-            // Atualizar checkbox "Selecionar Todos"
-            const allCheckboxes = document.querySelectorAll('.row-checkbox');
-            const checkedCheckboxes = document.querySelectorAll('.row-checkbox:checked');
-            const selectAllCheckbox = document.getElementById('selectAll');
-            
-            if (checkedCheckboxes.length === 0) {
-                selectAllCheckbox.checked = false;
-                selectAllCheckbox.indeterminate = false;
-            } else if (checkedCheckboxes.length === allCheckboxes.length) {
-                selectAllCheckbox.checked = true;
-                selectAllCheckbox.indeterminate = false;
-            } else {
-                selectAllCheckbox.checked = false;
-                selectAllCheckbox.indeterminate = true;
-            }
+// Configurar event listeners para checkboxes
+document.addEventListener('change', function(e) {
+    if (e.target.classList.contains('row-checkbox')) {
+        updateSelectedRecordsDisplay();
+
+        // Atualizar checkbox "Selecionar Todos"
+        const allCheckboxes = document.querySelectorAll('.row-checkbox');
+        const checkedCheckboxes = document.querySelectorAll('.row-checkbox:checked');
+        const selectAllCheckbox = document.getElementById('selectAll');
+
+        if (checkedCheckboxes.length === 0) {
+            selectAllCheckbox.checked = false;
+            selectAllCheckbox.indeterminate = false;
+        } else if (checkedCheckboxes.length === allCheckboxes.length) {
+            selectAllCheckbox.checked = true;
+            selectAllCheckbox.indeterminate = false;
+        } else {
+            selectAllCheckbox.checked = false;
+            selectAllCheckbox.indeterminate = true;
         }
-    });
-}
+    }
+});
 
 // Confirmar antes de sair se há alterações não salvas
 window.addEventListener('beforeunload', function(e) {
