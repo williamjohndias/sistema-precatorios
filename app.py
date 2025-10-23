@@ -27,11 +27,11 @@ app.secret_key = os.environ.get('SECRET_KEY', 'sua_chave_secreta_aqui')
 
 # Configuração do banco de dados usando variáveis de ambiente
 DB_CONFIG = {
-    'host': os.environ.get('DB_HOST'),
+    'host': os.environ.get('DB_HOST', 'bdunicoprecs.c50cwuocuwro.sa-east-1.rds.amazonaws.com'),
     'port': int(os.environ.get('DB_PORT', 5432)),
-    'user': os.environ.get('DB_USER'),
-    'password': os.environ.get('DB_PASSWORD'),
-    'database': os.environ.get('DB_NAME')
+    'user': os.environ.get('DB_USER', 'postgres'),
+    'password': os.environ.get('DB_PASSWORD', '$P^iFe27^YP5cpBU3J&tqa'),
+    'database': os.environ.get('DB_NAME', 'OCSC')
 }
 
 TABLE_NAME = 'precatorios'
@@ -65,12 +65,17 @@ class DatabaseManager:
                 'keepalives_count': 3
             })
             
+            logger.info(f"Tentando conectar ao banco: {conn_params['host']}:{conn_params['port']}")
             self.connection = psycopg2.connect(**conn_params, cursor_factory=RealDictCursor)
             self.cursor = self.connection.cursor()
             logger.info("Conexão com banco estabelecida")
             return True
         except psycopg2.Error as e:
             logger.error(f"Erro ao conectar com banco: {e}")
+            logger.error(f"Configuração usada: host={conn_params.get('host')}, port={conn_params.get('port')}, user={conn_params.get('user')}, database={conn_params.get('database')}")
+            return False
+        except Exception as e:
+            logger.error(f"Erro inesperado na conexão: {e}")
             return False
     
     def disconnect(self):
@@ -112,8 +117,14 @@ class DatabaseManager:
             if filters:
                 for field, value in filters.items():
                     if value and field in fields:
-                        where_conditions.append(f"{field} ILIKE %s")
-                        params.append(f"%{value}%")
+                        # Para campos dropdown, usar comparação exata
+                        if field in ['organizacao', 'regime', 'tipo', 'tribunal', 'natureza', 'situacao', 'ano_orc', 'esta_na_ordem', 'fora_da_ordem', 'presenca_no_pipe']:
+                            where_conditions.append(f"{field} = %s")
+                            params.append(value)
+                        else:
+                            # Para outros campos (como precatorio, ordem, valor), usar ILIKE
+                            where_conditions.append(f"{field} ILIKE %s")
+                            params.append(f"%{value}%")
             
             if where_conditions:
                 where_clause = " WHERE " + " AND ".join(where_conditions)
@@ -169,6 +180,17 @@ class DatabaseManager:
             logger.error(f"Erro ao buscar precatórios: {e}")
             return {'data': [], 'pagination': {}}
     
+    def get_filter_values(self, field: str) -> List[str]:
+        """Obtém valores únicos para um campo específico para usar em filtros dropdown"""
+        try:
+            query = f"SELECT DISTINCT {field} FROM {TABLE_NAME} WHERE {field} IS NOT NULL ORDER BY {field}"
+            self.cursor.execute(query)
+            results = self.cursor.fetchall()
+            return [str(row[field]) for row in results if row[field] is not None]
+        except psycopg2.Error as e:
+            logger.error(f"Erro ao buscar valores únicos para {field}: {e}")
+            return []
+
     def get_logs_paginated(self, page: int = 1, per_page: int = 50, filters: Dict[str, str] = None) -> Dict[str, Any]:
         """Obtém logs de alterações com paginação e filtros"""
         try:
@@ -429,6 +451,12 @@ def index():
         # Obter dados paginados com ordenação
         result = db_manager.get_precatorios_paginated(page=page, per_page=per_page, filters=filters, sort_field=sort_field, sort_order=sort_order)
         
+        # Obter valores únicos para filtros dropdown
+        filter_values = {}
+        filter_fields = ['organizacao', 'regime', 'tipo', 'tribunal', 'natureza', 'situacao', 'ano_orc']
+        for field in filter_fields:
+            filter_values[field] = db_manager.get_filter_values(field)
+        
         # Campos específicos para exibição (ordenados conforme especificação)
         display_fields = [
             {'name': 'id', 'label': 'ID', 'type': 'integer', 'editable': False, 'visible': False},
@@ -463,6 +491,7 @@ def index():
                              precatorios=result['data'],
                              pagination=result['pagination'],
                              filters=filters,
+                             filter_values=filter_values,
                              display_fields=display_fields,
                              sorting=sorting)
     

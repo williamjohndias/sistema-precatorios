@@ -85,52 +85,66 @@
                                 </div>
                                 <div class="col-md-3 mb-2">
                                     <label class="form-label">Organização</label>
-                                    <input type="text" class="form-control form-control-sm" 
-                                           name="filter_organizacao" 
-                                           value="{{ filters.get('organizacao', '') }}"
-                                           placeholder="Filtrar por organização">
+                                    <select class="form-control form-control-sm" name="filter_organizacao">
+                                        <option value="">Todas as organizações</option>
+                                        {% for value in filter_values.organizacao %}
+                                        <option value="{{ value }}" {% if filters.get('organizacao') == value %}selected{% endif %}>{{ value }}</option>
+                                        {% endfor %}
+                                    </select>
                                 </div>
                                 <div class="col-md-3 mb-2">
                                     <label class="form-label">Regime</label>
-                                    <input type="text" class="form-control form-control-sm" 
-                                           name="filter_regime" 
-                                           value="{{ filters.get('regime', '') }}"
-                                           placeholder="Filtrar por regime">
+                                    <select class="form-control form-control-sm" name="filter_regime">
+                                        <option value="">Todos os regimes</option>
+                                        {% for value in filter_values.regime %}
+                                        <option value="{{ value }}" {% if filters.get('regime') == value %}selected{% endif %}>{{ value }}</option>
+                                        {% endfor %}
+                                    </select>
                                 </div>
                                 <div class="col-md-3 mb-2">
                                     <label class="form-label">Tipo</label>
-                                    <input type="text" class="form-control form-control-sm" 
-                                           name="filter_tipo" 
-                                           value="{{ filters.get('tipo', '') }}"
-                                           placeholder="Filtrar por tipo">
+                                    <select class="form-control form-control-sm" name="filter_tipo">
+                                        <option value="">Todos os tipos</option>
+                                        {% for value in filter_values.tipo %}
+                                        <option value="{{ value }}" {% if filters.get('tipo') == value %}selected{% endif %}>{{ value }}</option>
+                                        {% endfor %}
+                                    </select>
                                 </div>
                                 <div class="col-md-3 mb-2">
                                     <label class="form-label">Tribunal</label>
-                                    <input type="text" class="form-control form-control-sm" 
-                                           name="filter_tribunal" 
-                                           value="{{ filters.get('tribunal', '') }}"
-                                           placeholder="Filtrar por tribunal">
+                                    <select class="form-control form-control-sm" name="filter_tribunal">
+                                        <option value="">Todos os tribunais</option>
+                                        {% for value in filter_values.tribunal %}
+                                        <option value="{{ value }}" {% if filters.get('tribunal') == value %}selected{% endif %}>{{ value }}</option>
+                                        {% endfor %}
+                                    </select>
                                 </div>
                                 <div class="col-md-3 mb-2">
                                     <label class="form-label">Natureza</label>
-                                    <input type="text" class="form-control form-control-sm" 
-                                           name="filter_natureza" 
-                                           value="{{ filters.get('natureza', '') }}"
-                                           placeholder="Filtrar por natureza">
+                                    <select class="form-control form-control-sm" name="filter_natureza">
+                                        <option value="">Todas as naturezas</option>
+                                        {% for value in filter_values.natureza %}
+                                        <option value="{{ value }}" {% if filters.get('natureza') == value %}selected{% endif %}>{{ value }}</option>
+                                        {% endfor %}
+                                    </select>
                                 </div>
                                 <div class="col-md-3 mb-2">
                                     <label class="form-label">Situação</label>
-                                    <input type="text" class="form-control form-control-sm" 
-                                           name="filter_situacao" 
-                                           value="{{ filters.get('situacao', '') }}"
-                                           placeholder="Filtrar por situação">
+                                    <select class="form-control form-control-sm" name="filter_situacao">
+                                        <option value="">Todas as situações</option>
+                                        {% for value in filter_values.situacao %}
+                                        <option value="{{ value }}" {% if filters.get('situacao') == value %}selected{% endif %}>{{ value }}</option>
+                                        {% endfor %}
+                                    </select>
                                 </div>
                                 <div class="col-md-3 mb-2">
                                     <label class="form-label">Ano Orçamento</label>
-                                    <input type="text" class="form-control form-control-sm" 
-                                           name="filter_ano_orc" 
-                                           value="{{ filters.get('ano_orc', '') }}"
-                                           placeholder="Filtrar por ano">
+                                    <select class="form-control form-control-sm" name="filter_ano_orc">
+                                        <option value="">Todos os anos</option>
+                                        {% for value in filter_values.ano_orc %}
+                                        <option value="{{ value }}" {% if filters.get('ano_orc') == value %}selected{% endif %}>{{ value }}</option>
+                                        {% endfor %}
+                                    </select>
                                 </div>
                                 <div class="col-md-3 mb-2">
                                     <label class="form-label">Valor</label>
