@@ -160,6 +160,8 @@ class DatabaseManager:
     def get_logs_paginated(self, page: int = 1, per_page: int = 50, filters: Dict[str, str] = None) -> Dict[str, Any]:
         """Obtém logs de alterações com paginação e filtros"""
         try:
+            logger.info(f"Buscando logs - Página: {page}, Por página: {per_page}, Filtros: {filters}")
+
             # Construir query base
             base_query = """
                 SELECT id, data_alteracao, usuario, precatorio, organizacao,
@@ -213,6 +215,8 @@ class DatabaseManager:
             # Executar query principal
             self.cursor.execute(base_query, params)
             data = self.cursor.fetchall()
+
+            logger.info(f"Query executada com sucesso. Total no banco: {total_count}, Retornados: {len(data)}")
 
             # Calcular paginação
             total_pages = (total_count + per_page - 1) // per_page
@@ -537,6 +541,9 @@ def logs():
 
         # Obter logs do banco de dados
         result = db_manager.get_logs_paginated(page=page, per_page=per_page, filters=filters)
+
+        logger.info(f"Logs carregados: {len(result['data'])} registros")
+        logger.info(f"Total de logs no banco: {result['pagination'].get('total_count', 0)}")
 
         return render_template('logs.html',
                              logs=result['data'],
