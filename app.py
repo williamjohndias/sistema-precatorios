@@ -89,8 +89,9 @@ class DatabaseManager:
         try:
             # Campos específicos solicitados (ordenados conforme especificação)
             fields = [
-                'id', 'precatorio', 'ordem', 'organizacao', 'regime', 'ano_orc',
-                'situacao', 'valor'
+                'id', 'precatorio', 'ordem', 'organizacao', 'regime', 'tipo', 'tribunal', 
+                'natureza', 'data_base', 'originario', 'situacao', 'esta_na_ordem', 
+                'fora_da_ordem', 'ano_orc', 'valor', 'presenca_no_pipe'
             ]
 
             # Validar campo de ordenação
@@ -320,6 +321,8 @@ def normalize_field_value(field_name: str, value: Any) -> Any:
     """Normaliza valores de campos para padrões consistentes.
     - ordem, ano_orc: inteiros extraindo somente dígitos
     - valor: string numérica padronizada com ponto decimal (ex.: 1234.56)
+    - data_base: converte para formato de data
+    - boolean fields: converte para boolean
     - demais: string aparada
     """
     if value is None:
@@ -356,6 +359,27 @@ def normalize_field_value(field_name: str, value: Any) -> Any:
             s = ''.join(parts) + '.' + decimal_part
         # Mantém como string padronizada
         return s
+
+    if field_name == 'data_base':
+        # Converte string para data se possível
+        if value and isinstance(value, str):
+            try:
+                from datetime import datetime
+                # Tenta diferentes formatos de data
+                for fmt in ['%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y']:
+                    try:
+                        return datetime.strptime(value, fmt).date()
+                    except ValueError:
+                        continue
+            except:
+                pass
+        return value
+
+    if field_name in ('esta_na_ordem', 'fora_da_ordem', 'presenca_no_pipe'):
+        # Converte para boolean
+        if isinstance(value, str):
+            return value.lower() in ('true', '1', 'sim', 's', 'yes', 'y')
+        return bool(value)
 
     # Campos de texto comuns
     return value
@@ -395,7 +419,8 @@ def index():
         
         # Filtros
         filters = {}
-        filter_fields = ['precatorio', 'ordem', 'organizacao', 'regime', 'ano_orc', 'situacao', 'valor']
+        filter_fields = ['precatorio', 'ordem', 'organizacao', 'regime', 'tipo', 'tribunal', 
+                         'natureza', 'situacao', 'esta_na_ordem', 'fora_da_ordem', 'ano_orc', 'valor']
         for field in filter_fields:
             value = request.args.get(f'filter_{field}', '').strip()
             if value:
@@ -411,9 +436,17 @@ def index():
             {'name': 'ordem', 'label': 'Ordem', 'type': 'integer', 'editable': False, 'visible': True},
             {'name': 'organizacao', 'label': 'Organização', 'type': 'character varying', 'editable': False, 'visible': True},
             {'name': 'regime', 'label': 'Regime', 'type': 'character varying', 'editable': False, 'visible': True},
-            {'name': 'ano_orc', 'label': 'Ano Orçamento', 'type': 'character varying', 'editable': False, 'visible': True},
+            {'name': 'tipo', 'label': 'Tipo', 'type': 'character varying', 'editable': True, 'visible': True},
+            {'name': 'tribunal', 'label': 'Tribunal', 'type': 'character varying', 'editable': True, 'visible': True},
+            {'name': 'natureza', 'label': 'Natureza', 'type': 'character varying', 'editable': True, 'visible': True},
+            {'name': 'data_base', 'label': 'Data Base', 'type': 'date', 'editable': True, 'visible': True},
+            {'name': 'originario', 'label': 'Originário', 'type': 'character varying', 'editable': True, 'visible': True},
             {'name': 'situacao', 'label': 'Situação', 'type': 'character varying', 'editable': True, 'visible': True},
-            {'name': 'valor', 'label': 'Valor', 'type': 'character varying', 'editable': True, 'visible': True},
+            {'name': 'esta_na_ordem', 'label': 'Na Ordem', 'type': 'boolean', 'editable': True, 'visible': True},
+            {'name': 'fora_da_ordem', 'label': 'Fora da Ordem', 'type': 'boolean', 'editable': True, 'visible': True},
+            {'name': 'ano_orc', 'label': 'Ano Orçamento', 'type': 'integer', 'editable': True, 'visible': True},
+            {'name': 'valor', 'label': 'Valor', 'type': 'numeric', 'editable': True, 'visible': True},
+            {'name': 'presenca_no_pipe', 'label': 'No Pipe', 'type': 'boolean', 'editable': True, 'visible': True},
         ]
         
         # Armazenar dados originais para desfazer

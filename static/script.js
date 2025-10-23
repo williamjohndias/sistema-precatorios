@@ -492,22 +492,55 @@ function updateSelectedRecordsDisplay() {
 function populateEditableFields() {
     const editableFieldsDiv = document.getElementById('editableFields');
     const editableFields = [
+        { name: 'tipo', label: 'Tipo', type: 'text' },
+        { name: 'tribunal', label: 'Tribunal', type: 'text' },
+        { name: 'natureza', label: 'Natureza', type: 'text' },
+        { name: 'data_base', label: 'Data Base', type: 'date' },
+        { name: 'originario', label: 'Originário', type: 'text' },
         { name: 'situacao', label: 'Situação', type: 'text' },
-        { name: 'valor', label: 'Valor', type: 'text' }
+        { name: 'esta_na_ordem', label: 'Na Ordem', type: 'select', options: [
+            { value: '', text: 'Não alterar' },
+            { value: 'true', text: 'Sim' },
+            { value: 'false', text: 'Não' }
+        ]},
+        { name: 'fora_da_ordem', label: 'Fora da Ordem', type: 'select', options: [
+            { value: '', text: 'Não alterar' },
+            { value: 'true', text: 'Sim' },
+            { value: 'false', text: 'Não' }
+        ]},
+        { name: 'ano_orc', label: 'Ano Orçamento', type: 'number' },
+        { name: 'valor', label: 'Valor', type: 'text' },
+        { name: 'presenca_no_pipe', label: 'No Pipe', type: 'select', options: [
+            { value: '', text: 'Não alterar' },
+            { value: 'true', text: 'Sim' },
+            { value: 'false', text: 'Não' }
+        ]}
     ];
     
     let html = '';
     editableFields.forEach(field => {
-        html += `
-            <div class="mb-3">
-                <label class="form-label">${field.label}:</label>
-                <input type="${field.type}" 
-                       class="form-control form-control-sm" 
-                       id="bulk_${field.name}" 
-                       placeholder="Novo valor para ${field.label}">
-                <small class="form-text text-muted">Deixe vazio para não alterar este campo</small>
-            </div>
-        `;
+        if (field.type === 'select') {
+            html += `
+                <div class="mb-3">
+                    <label class="form-label">${field.label}:</label>
+                    <select class="form-control form-control-sm" id="bulk_${field.name}">
+                        ${field.options.map(opt => `<option value="${opt.value}">${opt.text}</option>`).join('')}
+                    </select>
+                    <small class="form-text text-muted">Selecione para alterar este campo</small>
+                </div>
+            `;
+        } else {
+            html += `
+                <div class="mb-3">
+                    <label class="form-label">${field.label}:</label>
+                    <input type="${field.type}" 
+                           class="form-control form-control-sm" 
+                           id="bulk_${field.name}" 
+                           placeholder="Novo valor para ${field.label}">
+                    <small class="form-text text-muted">Deixe vazio para não alterar este campo</small>
+                </div>
+            `;
+        }
     });
     
     editableFieldsDiv.innerHTML = html;
@@ -548,12 +581,19 @@ function confirmBulkUpdate() {
     
     // Coletar campos para atualizar
     const fieldUpdates = {};
-    const editableFields = ['situacao', 'valor'];
+    const editableFields = ['tipo', 'tribunal', 'natureza', 'data_base', 'originario', 
+                           'situacao', 'esta_na_ordem', 'fora_da_ordem', 'ano_orc', 'valor', 'presenca_no_pipe'];
     
     editableFields.forEach(field => {
         const input = document.getElementById(`bulk_${field}`);
-        if (input && input.value.trim() !== '') {
-            fieldUpdates[field] = input.value.trim();
+        if (input) {
+            if (input.type === 'select-one') {
+                if (input.value !== '') {
+                    fieldUpdates[field] = input.value === 'true' ? true : input.value === 'false' ? false : input.value;
+                }
+            } else if (input.value.trim() !== '') {
+                fieldUpdates[field] = input.value.trim();
+            }
         }
     });
     
