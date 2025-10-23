@@ -349,7 +349,7 @@ document.addEventListener('keydown', function(e) {
 // Função para ordenar por campo
 function sortByField(field) {
     const urlParams = new URLSearchParams(window.location.search);
-    const currentSort = urlParams.get('sort') || 'id';
+    const currentSort = urlParams.get('sort') || 'ordem';
     const currentOrder = urlParams.get('order') || 'asc';
     
     // Determinar nova ordem

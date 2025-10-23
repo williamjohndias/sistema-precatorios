@@ -83,18 +83,18 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Erro ao desconectar: {e}")
     
-    def get_precatorios_paginated(self, page: int = 1, per_page: int = 50, filters: Dict[str, str] = None, sort_field: str = 'id', sort_order: str = 'asc') -> Dict[str, Any]:
+    def get_precatorios_paginated(self, page: int = 1, per_page: int = 50, filters: Dict[str, str] = None, sort_field: str = 'ordem', sort_order: str = 'asc') -> Dict[str, Any]:
         """Obtém precatórios com paginação, filtros e ordenação - otimizado para Vercel"""
         try:
             # Campos específicos solicitados (ordenados conforme especificação)
             fields = [
-                'id', 'precatorio', 'ordem', 'organizacao', 'regime', 'ano_orc', 
+                'id', 'precatorio', 'ordem', 'organizacao', 'regime', 'ano_orc',
                 'situacao', 'valor'
             ]
-            
+
             # Validar campo de ordenação
             if sort_field not in fields:
-                sort_field = 'id'
+                sort_field = 'ordem'
             
             if sort_order.upper() not in ['ASC', 'DESC']:
                 sort_order = 'ASC'
@@ -327,8 +327,8 @@ def index():
         except (ValueError, TypeError):
             per_page = 50
         
-        # Parâmetros de ordenação
-        sort_field = request.args.get('sort', 'id')
+        # Parâmetros de ordenação (padrão: ordenar pela coluna 'ordem')
+        sort_field = request.args.get('sort', 'ordem')
         sort_order = request.args.get('order', 'asc')
         
         # Filtros
