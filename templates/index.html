@@ -120,15 +120,6 @@
                                     </select>
                                 </div>
                                 <div class="col-md-3 mb-2">
-                                    <label class="form-label">Natureza</label>
-                                    <select class="form-control form-control-sm" name="filter_natureza">
-                                        <option value="">Todas as naturezas</option>
-                                        {% for value in filter_values.natureza %}
-                                        <option value="{{ value }}" {% if filters.get('natureza') == value %}selected{% endif %}>{{ value }}</option>
-                                        {% endfor %}
-                                    </select>
-                                </div>
-                                <div class="col-md-3 mb-2">
                                     <label class="form-label">Situação</label>
                                     <select class="form-control form-control-sm" name="filter_situacao">
                                         <option value="">Todas as situações</option>
@@ -138,7 +129,7 @@
                                     </select>
                                 </div>
                                 <div class="col-md-3 mb-2">
-                                    <label class="form-label">Ano Orçamento</label>
+                                    <label class="form-label">Ano Orçamentário</label>
                                     <select class="form-control form-control-sm" name="filter_ano_orc">
                                         <option value="">Todos os anos</option>
                                         {% for value in filter_values.ano_orc %}
@@ -154,12 +145,21 @@
                                            placeholder="Filtrar por valor">
                                 </div>
                                 <div class="col-md-3 mb-2">
-                                    <label class="form-label">Na Ordem</label>
+                                    <label class="form-label">No Pipe</label>
+                                    <select class="form-control form-control-sm" name="filter_presenca_no_pipe">
+                                        <option value="">Todos</option>
+                                        <option value="true" {% if filters.get('presenca_no_pipe') == 'true' %}selected{% endif %}>Sim</option>
+                                        <option value="false" {% if filters.get('presenca_no_pipe') == 'false' %}selected{% endif %}>Não</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-3 mb-2">
+                                    <label class="form-label">Esta na Ordem</label>
                                     <select class="form-control form-control-sm" name="filter_esta_na_ordem">
                                         <option value="">Todos</option>
                                         <option value="true" {% if filters.get('esta_na_ordem') == 'true' %}selected{% endif %}>Sim</option>
                                         <option value="false" {% if filters.get('esta_na_ordem') == 'false' %}selected{% endif %}>Não</option>
                                     </select>
+                                    <small class="form-text text-muted">Padrão: Apenas na ordem</small>
                                 </div>
                             </div>
                             <div class="row mt-2">

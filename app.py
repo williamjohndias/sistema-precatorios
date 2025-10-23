@@ -70,12 +70,17 @@ class DatabaseManager:
             self.cursor = self.connection.cursor()
             logger.info("Conexão com banco estabelecida")
             return True
+        except psycopg2.OperationalError as e:
+            logger.error(f"Erro operacional na conexão: {e}")
+            logger.error(f"Configuração usada: host={conn_params.get('host')}, port={conn_params.get('port')}, user={conn_params.get('user')}, database={conn_params.get('database')}")
+            return False
         except psycopg2.Error as e:
-            logger.error(f"Erro ao conectar com banco: {e}")
+            logger.error(f"Erro PostgreSQL: {e}")
             logger.error(f"Configuração usada: host={conn_params.get('host')}, port={conn_params.get('port')}, user={conn_params.get('user')}, database={conn_params.get('database')}")
             return False
         except Exception as e:
             logger.error(f"Erro inesperado na conexão: {e}")
+            logger.error(f"Configuração usada: host={conn_params.get('host')}, port={conn_params.get('port')}, user={conn_params.get('user')}, database={conn_params.get('database')}")
             return False
     
     def disconnect(self):
@@ -132,16 +137,8 @@ class DatabaseManager:
                 count_query += where_clause
             
             # Adicionar ordenação
-            # Quando o campo for 'ordem' (armazenado como texto na base), ordenamos numericamentre
-            if sort_field == 'ordem':
-                # Remove caracteres não numéricos e faz cast para inteiro; valores não numéricos vão para o fim
-                numeric_expr = (
-                    "CASE WHEN NULLIF(regexp_replace(ordem, '[^0-9]', '', 'g'), '') IS NULL "
-                    "THEN NULL ELSE NULLIF(regexp_replace(ordem, '[^0-9]', '', 'g'), '')::int END"
-                )
-                base_query += f" ORDER BY {numeric_expr} {sort_order.upper()}, id ASC"
-            else:
-                base_query += f" ORDER BY {sort_field} {sort_order.upper()}"
+            # Como 'ordem' já é integer no banco, ordenamos diretamente
+            base_query += f" ORDER BY {sort_field} {sort_order.upper()}"
             
             # Adicionar paginação
             offset = (page - 1) * per_page
@@ -178,7 +175,20 @@ class DatabaseManager:
             
         except psycopg2.Error as e:
             logger.error(f"Erro ao buscar precatórios: {e}")
-            return {'data': [], 'pagination': {}}
+            return {
+                'data': [], 
+                'pagination': {
+                    'page': page,
+                    'per_page': per_page,
+                    'total': 0,
+                    'total_count': 0,
+                    'total_pages': 0,
+                    'has_prev': False,
+                    'has_next': False,
+                    'prev_num': None,
+                    'next_num': None
+                }
+            }
     
     def get_filter_values(self, field: str) -> List[str]:
         """Obtém valores únicos para um campo específico para usar em filtros dropdown"""
@@ -189,6 +199,9 @@ class DatabaseManager:
             return [str(row[field]) for row in results if row[field] is not None]
         except psycopg2.Error as e:
             logger.error(f"Erro ao buscar valores únicos para {field}: {e}")
+            # Se há erro na transação, fazer rollback
+            if self.connection:
+                self.connection.rollback()
             return []
 
     def get_logs_paginated(self, page: int = 1, per_page: int = 50, filters: Dict[str, str] = None) -> Dict[str, Any]:
@@ -442,18 +455,22 @@ def index():
         # Filtros
         filters = {}
         filter_fields = ['precatorio', 'ordem', 'organizacao', 'regime', 'tipo', 'tribunal', 
-                         'natureza', 'situacao', 'esta_na_ordem', 'fora_da_ordem', 'ano_orc', 'valor']
+                         'situacao', 'ano_orc', 'valor', 'presenca_no_pipe', 'esta_na_ordem']
         for field in filter_fields:
             value = request.args.get(f'filter_{field}', '').strip()
             if value:
                 filters[field] = value
+        
+        # Filtro padrão: mostrar apenas precatórios que estão na ordem
+        if 'esta_na_ordem' not in filters:
+            filters['esta_na_ordem'] = 'true'
         
         # Obter dados paginados com ordenação
         result = db_manager.get_precatorios_paginated(page=page, per_page=per_page, filters=filters, sort_field=sort_field, sort_order=sort_order)
         
         # Obter valores únicos para filtros dropdown
         filter_values = {}
-        filter_fields = ['organizacao', 'regime', 'tipo', 'tribunal', 'natureza', 'situacao', 'ano_orc']
+        filter_fields = ['organizacao', 'regime', 'tipo', 'tribunal', 'situacao', 'ano_orc']
         for field in filter_fields:
             filter_values[field] = db_manager.get_filter_values(field)
         
@@ -464,17 +481,12 @@ def index():
             {'name': 'ordem', 'label': 'Ordem', 'type': 'integer', 'editable': False, 'visible': True},
             {'name': 'organizacao', 'label': 'Organização', 'type': 'character varying', 'editable': False, 'visible': True},
             {'name': 'regime', 'label': 'Regime', 'type': 'character varying', 'editable': False, 'visible': True},
-            {'name': 'tipo', 'label': 'Tipo', 'type': 'character varying', 'editable': True, 'visible': True},
-            {'name': 'tribunal', 'label': 'Tribunal', 'type': 'character varying', 'editable': True, 'visible': True},
-            {'name': 'natureza', 'label': 'Natureza', 'type': 'character varying', 'editable': True, 'visible': True},
-            {'name': 'data_base', 'label': 'Data Base', 'type': 'date', 'editable': True, 'visible': True},
-            {'name': 'originario', 'label': 'Originário', 'type': 'character varying', 'editable': True, 'visible': True},
+            {'name': 'tipo', 'label': 'Tipo', 'type': 'character varying', 'editable': False, 'visible': True},
+            {'name': 'tribunal', 'label': 'Tribunal', 'type': 'character varying', 'editable': False, 'visible': True},
+            {'name': 'ano_orc', 'label': 'Ano Orçamentário', 'type': 'integer', 'editable': False, 'visible': True},
             {'name': 'situacao', 'label': 'Situação', 'type': 'character varying', 'editable': True, 'visible': True},
-            {'name': 'esta_na_ordem', 'label': 'Na Ordem', 'type': 'boolean', 'editable': True, 'visible': True},
-            {'name': 'fora_da_ordem', 'label': 'Fora da Ordem', 'type': 'boolean', 'editable': True, 'visible': True},
-            {'name': 'ano_orc', 'label': 'Ano Orçamento', 'type': 'integer', 'editable': True, 'visible': True},
             {'name': 'valor', 'label': 'Valor', 'type': 'numeric', 'editable': True, 'visible': True},
-            {'name': 'presenca_no_pipe', 'label': 'No Pipe', 'type': 'boolean', 'editable': True, 'visible': True},
+            {'name': 'presenca_no_pipe', 'label': 'No Pipe', 'type': 'boolean', 'editable': False, 'visible': True},
         ]
         
         # Armazenar dados originais para desfazer
