@@ -162,13 +162,14 @@ class DatabaseManager:
         try:
             logger.info(f"Buscando logs - Página: {page}, Por página: {per_page}, Filtros: {filters}")
 
-            # Construir query base
+            # Construir query base com JOIN para pegar dados do precatório
             base_query = """
-                SELECT id, data_alteracao, usuario, precatorio, organizacao,
-                       campo_alterado, valor_anterior, valor_novo, ip_address
-                FROM precatorios_logs
+                SELECT l.id, l.data_alteracao, l.usuario, p.precatorio, p.organizacao,
+                       l.campo_alterado, l.valor_anterior, l.valor_novo, l.ip_address
+                FROM precatorios_logs l
+                LEFT JOIN precatorios p ON l.precatorio_id = p.id
             """
-            count_query = "SELECT COUNT(*) FROM precatorios_logs"
+            count_query = "SELECT COUNT(*) FROM precatorios_logs l"
 
             # Adicionar filtros
             where_conditions = []
@@ -176,23 +177,23 @@ class DatabaseManager:
 
             if filters:
                 if filters.get('usuario'):
-                    where_conditions.append("usuario ILIKE %s")
+                    where_conditions.append("l.usuario ILIKE %s")
                     params.append(f"%{filters['usuario']}%")
 
                 if filters.get('campo'):
-                    where_conditions.append("campo_alterado ILIKE %s")
+                    where_conditions.append("l.campo_alterado ILIKE %s")
                     params.append(f"%{filters['campo']}%")
 
                 if filters.get('precatorio'):
-                    where_conditions.append("precatorio ILIKE %s")
+                    where_conditions.append("p.precatorio ILIKE %s")
                     params.append(f"%{filters['precatorio']}%")
 
                 if filters.get('data_inicio'):
-                    where_conditions.append("DATE(data_alteracao) >= %s")
+                    where_conditions.append("DATE(l.data_alteracao) >= %s")
                     params.append(filters['data_inicio'])
 
                 if filters.get('data_fim'):
-                    where_conditions.append("DATE(data_alteracao) <= %s")
+                    where_conditions.append("DATE(l.data_alteracao) <= %s")
                     params.append(filters['data_fim'])
 
             if where_conditions:
@@ -201,7 +202,7 @@ class DatabaseManager:
                 count_query += where_clause
 
             # Adicionar ordenação (mais recentes primeiro)
-            base_query += " ORDER BY data_alteracao DESC"
+            base_query += " ORDER BY l.data_alteracao DESC"
 
             # Adicionar paginação
             offset = (page - 1) * per_page
