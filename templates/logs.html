@@ -10,14 +10,14 @@
 </head>
 <body>
     <!-- Navbar -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <nav class="navbar navbar-expand-lg navbar-dark" style="background-color:#D2AF52;">
         <div class="container-fluid">
             <span class="navbar-brand mb-0 h1">
                 <i class="fas fa-history me-2"></i>
                 Logs de Alterações
             </span>
             <div class="navbar-nav ms-auto">
-                <a class="nav-link" href="{{ url_for('index') }}">
+                <a class="nav-link" href="{{ url_for('index') }}" style="color:#000;">
                     <i class="fas fa-table me-1"></i>
                     Voltar aos Precatórios
                 </a>
@@ -99,7 +99,7 @@
                         {% if logs %}
                         <div class="table-responsive">
                             <table class="table table-hover mb-0">
-                                <thead class="table-light">
+                                <thead style="background-color:#D2AF52;color:#000;">
                                     <tr>
                                         <th class="text-center">Data/Hora</th>
                                         <th class="text-center">Usuário</th>

@@ -2,12 +2,14 @@
 
 let modifiedData = {};
 let originalData = {};
+const SELECTED_STORAGE_KEY = 'selected_precatorios_ids';
 
 // Inicialização
 document.addEventListener('DOMContentLoaded', function() {
     initializeTable();
     setupSearch();
     setupEventListeners();
+    syncSelectionFromStorage();
 });
 
 // Inicializar tabela
@@ -60,6 +62,73 @@ function setupEventListeners() {
             sortByField(this.dataset.field);
         });
     });
+}
+
+// ===== Seleção persistente entre páginas =====
+function getStoredSelectedIds() {
+    try {
+        const raw = localStorage.getItem(SELECTED_STORAGE_KEY);
+        const arr = raw ? JSON.parse(raw) : [];
+        return Array.isArray(arr) ? arr : [];
+    } catch (e) {
+        return [];
+    }
+}
+
+function setStoredSelectedIds(ids) {
+    const unique = Array.from(new Set(ids.map(String)));
+    localStorage.setItem(SELECTED_STORAGE_KEY, JSON.stringify(unique));
+}
+
+function addIdsToSelection(ids) {
+    const current = getStoredSelectedIds();
+    setStoredSelectedIds(current.concat(ids.map(String)));
+    reflectSelectionOnPage();
+}
+
+function removeIdsFromSelection(ids) {
+    const removeSet = new Set(ids.map(String));
+    const current = getStoredSelectedIds();
+    const next = current.filter(id => !removeSet.has(String(id)));
+    setStoredSelectedIds(next);
+    reflectSelectionOnPage();
+}
+
+function clearStoredSelection() {
+    localStorage.removeItem(SELECTED_STORAGE_KEY);
+    reflectSelectionOnPage();
+}
+
+function syncSelectionFromStorage() {
+    reflectSelectionOnPage();
+}
+
+function reflectSelectionOnPage() {
+    const selectedIds = new Set(getStoredSelectedIds().map(String));
+    const checkboxes = document.querySelectorAll('.row-checkbox');
+    checkboxes.forEach(cb => {
+        cb.checked = selectedIds.has(String(cb.value));
+    });
+
+    // Atualiza o estado do checkbox mestre
+    const selectAllCheckbox = document.getElementById('selectAll');
+    const allCount = checkboxes.length;
+    const checkedCount = Array.from(checkboxes).filter(cb => cb.checked).length;
+    if (checkedCount === 0) {
+        selectAllCheckbox.checked = false;
+        selectAllCheckbox.indeterminate = false;
+    } else if (checkedCount === allCount) {
+        selectAllCheckbox.checked = true;
+        selectAllCheckbox.indeterminate = false;
+    } else {
+        selectAllCheckbox.checked = false;
+        selectAllCheckbox.indeterminate = true;
+    }
+
+    // Atualiza visual do modal (se aberto)
+    if (document.getElementById('bulkEditModal')) {
+        updateSelectedRecordsDisplay();
+    }
 }
 
 // Marcar campo como modificado
@@ -379,31 +448,43 @@ function openBulkEditModal() {
 
 // Atualizar display dos registros selecionados
 function updateSelectedRecordsDisplay() {
-    const selectedCheckboxes = document.querySelectorAll('.row-checkbox:checked');
+    const selectedIds = getStoredSelectedIds();
     const selectedRecordsDiv = document.getElementById('selectedRecords');
-    
-    if (selectedCheckboxes.length === 0) {
+
+    if (!selectedIds || selectedIds.length === 0) {
         selectedRecordsDiv.innerHTML = '<small class="text-muted">Nenhum registro selecionado</small>';
         return;
     }
-    
-    let html = `<div class="mb-2"><strong>${selectedCheckboxes.length} registro(s) selecionado(s):</strong></div>`;
-    
-    selectedCheckboxes.forEach(checkbox => {
-        const row = checkbox.closest('tr');
-        const precatorioId = checkbox.value;
+
+    let html = `<div class="mb-2"><strong>${selectedIds.length} registro(s) selecionado(s):</strong></div>`;
+
+    // Mostra detalhado apenas para os visíveis na página atual
+    const visibleById = {};
+    document.querySelectorAll('tbody tr').forEach(row => {
+        const id = row.getAttribute('data-precatorio');
+        if (!id) return;
         const precatorioCell = row.querySelector('[data-field="precatorio"]');
         const organizacaoCell = row.querySelector('[data-field="organizacao"]');
-        
-        const precatorio = precatorioCell ? precatorioCell.textContent.trim() : precatorioId;
-        const organizacao = organizacaoCell ? organizacaoCell.textContent.trim() : 'N/A';
-        
-        html += `<div class="d-flex justify-content-between align-items-center mb-1">
-                    <small>${precatorio}</small>
-                    <small class="text-muted">${organizacao}</small>
-                 </div>`;
+        visibleById[id] = {
+            precatorio: precatorioCell ? precatorioCell.textContent.trim() : id,
+            organizacao: organizacaoCell ? organizacaoCell.textContent.trim() : 'N/A'
+        };
     });
-    
+
+    selectedIds.forEach(id => {
+        if (visibleById[id]) {
+            html += `<div class="d-flex justify-content-between align-items-center mb-1">
+                        <small>${visibleById[id].precatorio}</small>
+                        <small class="text-muted">${visibleById[id].organizacao}</small>
+                     </div>`;
+        }
+    });
+
+    const hiddenCount = selectedIds.filter(id => !visibleById[id]).length;
+    if (hiddenCount > 0) {
+        html += `<div class="mt-2"><small class="text-muted">+ ${hiddenCount} selecionado(s) em outras páginas</small></div>`;
+    }
+
     selectedRecordsDiv.innerHTML = html;
 }
 
@@ -435,46 +516,35 @@ function populateEditableFields() {
 // Selecionar todos os registros visíveis
 function selectAllVisible() {
     const checkboxes = document.querySelectorAll('.row-checkbox');
-    checkboxes.forEach(checkbox => {
-        checkbox.checked = true;
-    });
-    document.getElementById('selectAll').checked = true;
-    updateSelectedRecordsDisplay();
+    const ids = Array.from(checkboxes).map(cb => cb.value);
+    addIdsToSelection(ids);
 }
 
 // Limpar seleção
 function clearSelection() {
-    const checkboxes = document.querySelectorAll('.row-checkbox');
-    checkboxes.forEach(checkbox => {
-        checkbox.checked = false;
-    });
-    document.getElementById('selectAll').checked = false;
-    updateSelectedRecordsDisplay();
+    clearStoredSelection();
 }
 
 // Toggle selecionar todos
 function toggleSelectAll() {
     const selectAllCheckbox = document.getElementById('selectAll');
     const checkboxes = document.querySelectorAll('.row-checkbox');
-    
-    checkboxes.forEach(checkbox => {
-        checkbox.checked = selectAllCheckbox.checked;
-    });
-    
-    updateSelectedRecordsDisplay();
+    const ids = Array.from(checkboxes).map(cb => cb.value);
+    if (selectAllCheckbox.checked) {
+        addIdsToSelection(ids);
+    } else {
+        removeIdsFromSelection(ids);
+    }
 }
 
 // Confirmar atualização em massa
 function confirmBulkUpdate() {
-    const selectedCheckboxes = document.querySelectorAll('.row-checkbox:checked');
-    
-    if (selectedCheckboxes.length === 0) {
+    const selectedIds = getStoredSelectedIds();
+
+    if (selectedIds.length === 0) {
         showAlert('Selecione pelo menos um registro para atualizar', 'warning');
         return;
     }
-    
-    // Coletar IDs selecionados
-    const selectedIds = Array.from(selectedCheckboxes).map(checkbox => checkbox.value);
     
     // Coletar campos para atualizar
     const fieldUpdates = {};
@@ -518,7 +588,7 @@ function confirmBulkUpdate() {
             modal.hide();
             
             // Limpar seleção
-            clearSelection();
+            clearStoredSelection();
             
             // Recarregar dados após 2 segundos
             setTimeout(() => {
@@ -537,22 +607,11 @@ function confirmBulkUpdate() {
 // Configurar event listeners para checkboxes
 document.addEventListener('change', function(e) {
     if (e.target.classList.contains('row-checkbox')) {
-        updateSelectedRecordsDisplay();
-
-        // Atualizar checkbox "Selecionar Todos"
-        const allCheckboxes = document.querySelectorAll('.row-checkbox');
-        const checkedCheckboxes = document.querySelectorAll('.row-checkbox:checked');
-        const selectAllCheckbox = document.getElementById('selectAll');
-
-        if (checkedCheckboxes.length === 0) {
-            selectAllCheckbox.checked = false;
-            selectAllCheckbox.indeterminate = false;
-        } else if (checkedCheckboxes.length === allCheckboxes.length) {
-            selectAllCheckbox.checked = true;
-            selectAllCheckbox.indeterminate = false;
+        const id = e.target.value;
+        if (e.target.checked) {
+            addIdsToSelection([id]);
         } else {
-            selectAllCheckbox.checked = false;
-            selectAllCheckbox.indeterminate = true;
+            removeIdsFromSelection([id]);
         }
     }
 });

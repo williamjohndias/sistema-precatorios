@@ -1,7 +1,7 @@
 /* Estilos para o Sistema de Precatórios */
 
 body {
-    background-color: #f8f9fa;
+    background-color: #F5E08A; /* fundo claro amarelo dourado */
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
@@ -44,7 +44,7 @@ body {
 }
 
 .table-hover tbody tr:hover {
-    background-color: rgba(0, 123, 255, 0.1);
+    background-color: rgba(210, 175, 82, 0.15); /* #D2AF52 */
 }
 
 /* Estilos para campos editáveis */
@@ -57,14 +57,14 @@ body {
 }
 
 .editable-field:focus {
-    border-color: #80bdff;
-    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+    border-color: #D2AF52;
+    box-shadow: 0 0 0 0.2rem rgba(210, 175, 82, 0.35);
     outline: 0;
 }
 
 .editable-field.modified {
-    border-color: #28a745;
-    background-color: rgba(40, 167, 69, 0.1);
+    border-color: #F5C600;
+    background-color: rgba(245, 198, 0, 0.15);
 }
 
 .editable-field.error {
@@ -108,8 +108,8 @@ body {
 }
 
 .alert-success {
-    background-color: #d4edda;
-    color: #155724;
+    background-color: #fff3cd;
+    color: #6b5700;
 }
 
 .alert-danger {
@@ -123,8 +123,8 @@ body {
 }
 
 .alert-info {
-    background-color: #d1ecf1;
-    color: #0c5460;
+    background-color: #F5E08A;
+    color: #6b5700;
 }
 
 /* Badges personalizados */
@@ -232,6 +232,7 @@ body {
 }
 
 .sort-indicators .text-primary {
+    color: #D2AF52 !important;
     animation: pulse-sort 1s infinite;
 }
 
@@ -395,7 +396,7 @@ body {
 
 /* Linhas selecionadas */
 tr.selected {
-    background-color: #e3f2fd !important;
+    background-color: rgba(245, 198, 0, 0.25) !important;
 }
 
 tr.selected:hover {
@@ -419,8 +420,8 @@ tr.selected:hover {
 }
 
 #editableFields .form-control:focus {
-    border-color: #86b7fe;
-    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+    border-color: #D2AF52;
+    box-shadow: 0 0 0 0.25rem rgba(210, 175, 82, 0.35);
 }
 
 /* Indicadores de campos editáveis */

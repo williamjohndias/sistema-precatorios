@@ -12,6 +12,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 import json
 import os
+import re
 
 # Configurar logging otimizado para Vercel
 logging.basicConfig(
@@ -119,7 +120,16 @@ class DatabaseManager:
                 count_query += where_clause
             
             # Adicionar ordenação
-            base_query += f" ORDER BY {sort_field} {sort_order.upper()}"
+            # Quando o campo for 'ordem' (armazenado como texto na base), ordenamos numericamentre
+            if sort_field == 'ordem':
+                # Remove caracteres não numéricos e faz cast para inteiro; valores não numéricos vão para o fim
+                numeric_expr = (
+                    "CASE WHEN NULLIF(regexp_replace(ordem, '[^0-9]', '', 'g'), '') IS NULL "
+                    "THEN NULL ELSE NULLIF(regexp_replace(ordem, '[^0-9]', '', 'g'), '')::int END"
+                )
+                base_query += f" ORDER BY {numeric_expr} {sort_order.upper()}, id ASC"
+            else:
+                base_query += f" ORDER BY {sort_field} {sort_order.upper()}"
             
             # Adicionar paginação
             offset = (page - 1) * per_page
@@ -141,6 +151,7 @@ class DatabaseManager:
                 'page': page,
                 'per_page': per_page,
                 'total': total_count,
+                'total_count': total_count,
                 'total_pages': total_pages,
                 'has_prev': page > 1,
                 'has_next': page < total_pages,
@@ -304,6 +315,57 @@ db_manager = DatabaseManager()
 original_data = {}
 modified_data = {}
 
+# ===== Normalização/Validação de tipos =====
+def normalize_field_value(field_name: str, value: Any) -> Any:
+    """Normaliza valores de campos para padrões consistentes.
+    - ordem, ano_orc: inteiros extraindo somente dígitos
+    - valor: string numérica padronizada com ponto decimal (ex.: 1234.56)
+    - demais: string aparada
+    """
+    if value is None:
+        return None
+
+    if isinstance(value, str):
+        value = value.strip()
+
+    if field_name in ('ordem', 'ano_orc'):
+        # Extrai apenas dígitos e converte para int, quando possível
+        digits = re.sub(r"[^0-9]", "", str(value))
+        if digits == '':
+            return None
+        try:
+            return int(digits)
+        except ValueError:
+            return None
+
+    if field_name == 'valor':
+        # Remove símbolos e separadores de milhar e padroniza decimal com ponto
+        s = str(value).strip()
+        # troca vírgula decimal por ponto, remove espaços e R$
+        s = s.replace('R$', '').replace(' ', '')
+        # Se houver ambas vírgula e ponto, assume que o último separador é o decimal
+        # Estratégia simples: remove todos os separadores exceto o último caractere [.,]
+        # 1) substitui vírgula por ponto
+        s = s.replace(',', '.')
+        # 2) remove tudo que não seja dígito ou ponto
+        s = re.sub(r"[^0-9.]", "", s)
+        # 3) se houver múltiplos pontos, mantém somente o último como decimal
+        if s.count('.') > 1:
+            parts = s.split('.')
+            decimal_part = parts.pop()
+            s = ''.join(parts) + '.' + decimal_part
+        # Mantém como string padronizada
+        return s
+
+    # Campos de texto comuns
+    return value
+
+def normalize_updates(updates: Dict[str, Any]) -> Dict[str, Any]:
+    normalized = {}
+    for k, v in updates.items():
+        normalized[k] = normalize_field_value(k, v)
+    return normalized
+
 @app.route('/')
 def index():
     """Página principal - otimizada para Vercel"""
@@ -321,11 +383,11 @@ def index():
             page = 1
             
         try:
-            per_page = int(request.args.get('per_page', 50))
+            per_page = int(request.args.get('per_page', 1000))
             if per_page < 1 or per_page > 1000:
-                per_page = 50
+                per_page = 1000
         except (ValueError, TypeError):
-            per_page = 50
+            per_page = 1000
         
         # Parâmetros de ordenação (padrão: ordenar pela coluna 'ordem')
         sort_field = request.args.get('sort', 'ordem')
@@ -408,6 +470,8 @@ def update_data():
             # Remover campos que não devem ser atualizados
             filtered_updates = {k: v for k, v in updates.items() 
                               if k != 'id' and v is not None}
+            # Normalizar valores para padronização de tipos
+            filtered_updates = normalize_updates(filtered_updates)
             
             if filtered_updates:
                 # Obter informações do usuário para logging
@@ -478,7 +542,9 @@ def bulk_update():
         
         for precatorio_id in selected_ids:
             try:
-                if db_manager.update_precatorio(str(precatorio_id), field_updates, 
+                # Normalizar valores para padronização de tipos
+                normalized = normalize_updates(field_updates)
+                if db_manager.update_precatorio(str(precatorio_id), normalized, 
                                               usuario=usuario, ip_address=ip_address, 
                                               user_agent=request.headers.get('User-Agent')):
                     success_count += 1

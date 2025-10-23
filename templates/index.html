@@ -9,26 +9,26 @@
     <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
 </head>
 <body>
-    <nav class="navbar navbar-dark bg-primary">
+    <nav class="navbar navbar-dark" style="background-color: #D2AF52;">
         <div class="container-fluid">
             <span class="navbar-brand mb-0 h1">
                 <i class="fas fa-database me-2"></i>
                 ORDEM CRONOLÓGICA DE PRECATÓRIOS
             </span>
             <div class="d-flex">
-                <a class="btn btn-outline-light me-2" href="{{ url_for('logs') }}">
+                <a class="btn btn-outline-light me-2" href="{{ url_for('logs') }}" style="border-color:#fff;color:#fff;">
                     <i class="fas fa-history me-1"></i>Logs
                 </a>
-                <button class="btn btn-primary me-2" onclick="openBulkEditModal()">
+                <button class="btn me-2" onclick="openBulkEditModal()" style="background-color:#F5C600;border-color:#F5C600;color:#000;">
                     <i class="fas fa-edit me-1"></i>Edição em Massa
                 </button>
-                <button class="btn btn-success me-2" onclick="saveChanges()">
+                <button class="btn me-2" onclick="saveChanges()" style="background-color:#D2AF52;border-color:#D2AF52;color:#000;">
                     <i class="fas fa-save me-1"></i>Atualizar
                 </button>
-                <button class="btn btn-warning me-2" onclick="undoChanges()">
+                <button class="btn me-2" onclick="undoChanges()" style="background-color:#F5E08A;border-color:#F5E08A;color:#000;">
                     <i class="fas fa-undo me-1"></i>Desfazer
                 </button>
-                <button class="btn btn-info" onclick="refreshData()">
+                <button class="btn" onclick="refreshData()" style="background-color:#F5C600;border-color:#F5C600;color:#000;">
                     <i class="fas fa-sync me-1"></i>Atualizar Dados
                 </button>
             </div>
@@ -150,7 +150,7 @@
                     <div class="card-body p-0">
                         <div class="table-responsive" style="max-height: 70vh; overflow-y: auto;">
                             <table class="table table-striped table-hover mb-0" id="dataTable">
-                                <thead class="table-dark sticky-top">
+                                <thead class="sticky-top" style="background-color:#D2AF52;color:#000;">
                                     <tr>
                                         <th class="text-center" style="width: 50px;">
                                             <input type="checkbox" id="selectAll" onchange="toggleSelectAll()">
