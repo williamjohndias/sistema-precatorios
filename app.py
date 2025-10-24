@@ -218,7 +218,8 @@ class DatabaseManager:
             # Construir query base usando a estrutura real da tabela
             base_query = """
                 SELECT l.id, l.organizacao, l.prioridade, l.tribunal,
-                       l.campo_modificado, l.valor_anterior, l.valor_novo, l.data_modificacao
+                       l.campo_modificado, l.valor_anterior, l.valor_novo, l.data_modificacao,
+                       l.precatorio, l.ordem
                 FROM precatorios_logs l
             """
             count_query = "SELECT COUNT(*) FROM precatorios_logs l"
@@ -228,6 +229,10 @@ class DatabaseManager:
             params = []
 
             if filters:
+                if filters.get('precatorio'):
+                    where_conditions.append("l.precatorio ILIKE %s")
+                    params.append(f"%{filters['precatorio']}%")
+
                 if filters.get('organizacao'):
                     where_conditions.append("l.organizacao ILIKE %s")
                     params.append(f"%{filters['organizacao']}%")
@@ -305,13 +310,14 @@ class DatabaseManager:
             }
 
     def log_precatorio_change(self, precatorio_id: str, field: str, old_value: Any, new_value: Any, 
-                              organizacao: str, prioridade: str, tribunal: str) -> bool:
+                              organizacao: str, prioridade: str, tribunal: str, precatorio: str, ordem: int) -> bool:
         """Registra uma alteração na tabela de logs"""
         try:
             log_query = """
                 INSERT INTO precatorios_logs 
-                (organizacao, prioridade, tribunal, campo_modificado, valor_anterior, valor_novo, data_modificacao)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                (organizacao, prioridade, tribunal, campo_modificado, valor_anterior, valor_novo, 
+                 data_modificacao, precatorio, ordem)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
             
             log_values = [
@@ -321,7 +327,9 @@ class DatabaseManager:
                 field,
                 str(old_value) if old_value is not None else None,
                 str(new_value) if new_value is not None else None,
-                get_brazil_time().replace(tzinfo=None)
+                get_brazil_time().replace(tzinfo=None),
+                precatorio,
+                ordem
             ]
             
             self.cursor.execute(log_query, log_values)
@@ -336,7 +344,7 @@ class DatabaseManager:
         """Atualiza um precatório específico - otimizado para Vercel"""
         try:
             # Primeiro, buscar dados atuais para comparação
-            current_query = f"SELECT organizacao, prioridade, tribunal, {', '.join(updates.keys())} FROM {TABLE_NAME} WHERE id = %s"
+            current_query = f"SELECT organizacao, prioridade, tribunal, precatorio, ordem, {', '.join(updates.keys())} FROM {TABLE_NAME} WHERE id = %s"
             self.cursor.execute(current_query, [precatorio_id])
             current_data = self.cursor.fetchone()
             
@@ -383,7 +391,9 @@ class DatabaseManager:
                             new_value=new_value,
                             organizacao=current_data.get('organizacao', ''),
                             prioridade=current_data.get('prioridade', ''),
-                            tribunal=current_data.get('tribunal', '')
+                            tribunal=current_data.get('tribunal', ''),
+                            precatorio=current_data.get('precatorio', ''),
+                            ordem=current_data.get('ordem', 0)
                         )
             
             self.connection.commit()

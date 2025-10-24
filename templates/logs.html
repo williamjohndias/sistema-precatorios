@@ -39,6 +39,12 @@
                     <div class="card-body">
                         <form method="GET" class="row g-3">
                             <div class="col-md-3">
+                                <label for="filter_precatorio" class="form-label">Precatório</label>
+                                <input type="text" class="form-control" id="filter_precatorio" 
+                                       name="filter_precatorio" value="{{ filters.get('precatorio', '') }}"
+                                       placeholder="Filtrar por precatório">
+                            </div>
+                            <div class="col-md-3">
                                 <label for="filter_organizacao" class="form-label">Organização</label>
                                 <input type="text" class="form-control" id="filter_organizacao" 
                                        name="filter_organizacao" value="{{ filters.get('organizacao', '') }}"
@@ -96,6 +102,8 @@
                                 <thead style="background-color:#D2AF52;color:#000;">
                                     <tr>
                                         <th class="text-center">Data/Hora</th>
+                                        <th class="text-center">Precatório</th>
+                                        <th class="text-center">Ordem</th>
                                         <th class="text-center">Organização</th>
                                         <th class="text-center">Prioridade</th>
                                         <th class="text-center">Tribunal</th>
@@ -111,6 +119,14 @@
                                                 {{ log.data_modificacao.strftime('%d/%m/%Y') }}<br>
                                                 {{ log.data_modificacao.strftime('%H:%M:%S') }}
                                             </small>
+                                        </td>
+                                        <td class="text-center">
+                                            <strong>{{ log.precatorio or 'N/A' }}</strong>
+                                        </td>
+                                        <td class="text-center">
+                                            <span class="badge bg-primary">
+                                                {{ log.ordem or 'N/A' }}
+                                            </span>
                                         </td>
                                         <td class="text-center">
                                             {{ log.organizacao or 'N/A' }}
