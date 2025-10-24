@@ -39,22 +39,16 @@
                     <div class="card-body">
                         <form method="GET" class="row g-3">
                             <div class="col-md-3">
-                                <label for="filter_usuario" class="form-label">Usuário</label>
-                                <input type="text" class="form-control" id="filter_usuario" 
-                                       name="filter_usuario" value="{{ filters.get('usuario', '') }}"
-                                       placeholder="Filtrar por usuário">
+                                <label for="filter_organizacao" class="form-label">Organização</label>
+                                <input type="text" class="form-control" id="filter_organizacao" 
+                                       name="filter_organizacao" value="{{ filters.get('organizacao', '') }}"
+                                       placeholder="Filtrar por organização">
                             </div>
                             <div class="col-md-3">
-                                <label for="filter_campo" class="form-label">Campo Alterado</label>
+                                <label for="filter_campo" class="form-label">Campo Modificado</label>
                                 <input type="text" class="form-control" id="filter_campo" 
                                        name="filter_campo" value="{{ filters.get('campo', '') }}"
                                        placeholder="Filtrar por campo">
-                            </div>
-                            <div class="col-md-3">
-                                <label for="filter_precatorio" class="form-label">Precatório</label>
-                                <input type="text" class="form-control" id="filter_precatorio" 
-                                       name="filter_precatorio" value="{{ filters.get('precatorio', '') }}"
-                                       placeholder="Filtrar por precatório">
                             </div>
                             <div class="col-md-3">
                                 <label for="filter_data_inicio" class="form-label">Data Início</label>
@@ -102,12 +96,11 @@
                                 <thead style="background-color:#D2AF52;color:#000;">
                                     <tr>
                                         <th class="text-center">Data/Hora</th>
-                                        <th class="text-center">Usuário</th>
-                                        <th class="text-center">Precatório</th>
                                         <th class="text-center">Organização</th>
+                                        <th class="text-center">Prioridade</th>
+                                        <th class="text-center">Tribunal</th>
                                         <th class="text-center">Campo</th>
                                         <th class="text-center">Alteração</th>
-                                        <th class="text-center">IP</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -115,24 +108,26 @@
                                     <tr>
                                         <td class="text-center">
                                             <small class="text-muted">
-                                                {{ log.data_alteracao.strftime('%d/%m/%Y') }}<br>
-                                                {{ log.data_alteracao.strftime('%H:%M:%S') }}
+                                                {{ log.data_modificacao.strftime('%d/%m/%Y') }}<br>
+                                                {{ log.data_modificacao.strftime('%H:%M:%S') }}
                                             </small>
-                                        </td>
-                                        <td class="text-center">
-                                            <span class="badge bg-secondary">
-                                                {{ log.usuario }}
-                                            </span>
-                                        </td>
-                                        <td class="text-center">
-                                            <strong>{{ log.precatorio or 'N/A' }}</strong>
                                         </td>
                                         <td class="text-center">
                                             {{ log.organizacao or 'N/A' }}
                                         </td>
                                         <td class="text-center">
+                                            <span class="badge bg-info">
+                                                {{ log.prioridade or 'N/A' }}
+                                            </span>
+                                        </td>
+                                        <td class="text-center">
+                                            <span class="badge bg-secondary">
+                                                {{ log.tribunal or 'N/A' }}
+                                            </span>
+                                        </td>
+                                        <td class="text-center">
                                             <span class="badge bg-warning text-dark">
-                                                {{ log.campo_alterado }}
+                                                {{ log.campo_modificado }}
                                             </span>
                                         </td>
                                         <td class="text-center">
@@ -141,11 +136,6 @@
                                                 <span class="change-arrow">→</span>
                                                 <span class="new-value">{{ log.valor_novo or '-' }}</span>
                                             </div>
-                                        </td>
-                                        <td class="text-center">
-                                            <small class="text-muted">
-                                                {{ log.ip_address or '-' }}
-                                            </small>
                                         </td>
                                     </tr>
                                     {% endfor %}
