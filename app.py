@@ -208,6 +208,12 @@ class DatabaseManager:
         """Obtém logs de alterações com paginação e filtros"""
         try:
             logger.info(f"Buscando logs - Página: {page}, Por página: {per_page}, Filtros: {filters}")
+            
+            # Verificar se há conexão ativa
+            if not self.connection or self.connection.closed:
+                if not self.connect():
+                    logger.error("Erro ao conectar ao banco para buscar logs")
+                    return {'data': [], 'pagination': {'page': 1, 'per_page': per_page, 'total': 0, 'total_count': 0, 'total_pages': 0, 'has_prev': False, 'has_next': False, 'prev_num': None, 'next_num': None}}
 
             # Construir query base usando a estrutura real da tabela
             base_query = """
@@ -298,10 +304,46 @@ class DatabaseManager:
                 }
             }
 
+    def log_precatorio_change(self, precatorio_id: str, field: str, old_value: Any, new_value: Any, 
+                              organizacao: str, prioridade: str, tribunal: str) -> bool:
+        """Registra uma alteração na tabela de logs"""
+        try:
+            log_query = """
+                INSERT INTO precatorios_logs 
+                (organizacao, prioridade, tribunal, campo_modificado, valor_anterior, valor_novo, data_modificacao)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """
+            
+            log_values = [
+                organizacao,
+                prioridade,
+                tribunal,
+                field,
+                str(old_value) if old_value is not None else None,
+                str(new_value) if new_value is not None else None,
+                get_brazil_time().replace(tzinfo=None)
+            ]
+            
+            self.cursor.execute(log_query, log_values)
+            return True
+            
+        except psycopg2.Error as e:
+            logger.error(f"Erro ao registrar log: {e}")
+            return False
+
     def update_precatorio(self, precatorio_id: str, updates: Dict[str, Any],
                           usuario: str = 'Sistema Web', ip_address: str = None, user_agent: str = None) -> bool:
         """Atualiza um precatório específico - otimizado para Vercel"""
         try:
+            # Primeiro, buscar dados atuais para comparação
+            current_query = f"SELECT organizacao, prioridade, tribunal, {', '.join(updates.keys())} FROM {TABLE_NAME} WHERE id = %s"
+            self.cursor.execute(current_query, [precatorio_id])
+            current_data = self.cursor.fetchone()
+            
+            if not current_data:
+                logger.error(f"Precatório ID {precatorio_id} não encontrado")
+                return False
+            
             # Preparar campos e valores para atualização
             fields = []
             values = []
@@ -328,6 +370,22 @@ class DatabaseManager:
             """
 
             self.cursor.execute(query, values)
+            
+            # Registrar logs para cada campo alterado
+            for field, new_value in updates.items():
+                if field != 'id':
+                    old_value = current_data.get(field)
+                    if old_value != new_value:  # Só registrar se houve mudança
+                        self.log_precatorio_change(
+                            precatorio_id=precatorio_id,
+                            field=field,
+                            old_value=old_value,
+                            new_value=new_value,
+                            organizacao=current_data.get('organizacao', ''),
+                            prioridade=current_data.get('prioridade', ''),
+                            tribunal=current_data.get('tribunal', '')
+                        )
+            
             self.connection.commit()
 
             logger.info(f"Precatório ID {precatorio_id} atualizado com sucesso")
