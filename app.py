@@ -619,7 +619,10 @@ def update_data():
         # Limpar dados modificados após atualização
         modified_data.clear()
         
-        message = f"Atualização concluída: {success_count} sucessos, {error_count} erros"
+        if error_count == 0:
+            message = f"Atualização concluída: {success_count} sucessos"
+        else:
+            message = f"Atualização concluída: {success_count} sucessos, {error_count} erros"
         
         return jsonify({
             'success': error_count == 0,
