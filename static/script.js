@@ -332,23 +332,6 @@ function undoChanges() {
 }
 
 // Atualizar dados
-function refreshData() {
-    showLoading(true);
-    
-    fetch('/refresh')
-    .then(response => {
-        if (response.ok) {
-            window.location.reload();
-        } else {
-            throw new Error('Erro ao atualizar dados');
-        }
-    })
-    .catch(error => {
-        showLoading(false);
-        showAlert('Erro ao atualizar dados: ' + error.message, 'danger');
-    });
-}
-
 // Mostrar alerta
 function showAlert(message, type) {
     const alertContainer = document.getElementById('alertContainer');
@@ -450,9 +433,13 @@ function openBulkEditModal() {
 function updateSelectedRecordsDisplay() {
     const selectedIds = getStoredSelectedIds();
     const selectedRecordsDiv = document.getElementById('selectedRecords');
+    const selectionInfoSpan = document.getElementById('selectionInfo');
 
     if (!selectedIds || selectedIds.length === 0) {
         selectedRecordsDiv.innerHTML = '<small class="text-muted">Nenhum registro selecionado</small>';
+        if (selectionInfoSpan) {
+            selectionInfoSpan.textContent = 'Selecione registros para edição em massa';
+        }
         return;
     }
 
@@ -486,6 +473,15 @@ function updateSelectedRecordsDisplay() {
     }
 
     selectedRecordsDiv.innerHTML = html;
+    
+    // Atualizar informação de seleção
+    if (selectionInfoSpan) {
+        if (hiddenCount > 0) {
+            selectionInfoSpan.textContent = `${selectedIds.length} registros selecionados (${selectedIds.length - hiddenCount} nesta página, ${hiddenCount} em outras páginas)`;
+        } else {
+            selectionInfoSpan.textContent = `${selectedIds.length} registros selecionados nesta página`;
+        }
+    }
 }
 
 // Popular campos editáveis no modal
@@ -518,6 +514,29 @@ function selectAllVisible() {
     const checkboxes = document.querySelectorAll('.row-checkbox');
     const ids = Array.from(checkboxes).map(cb => cb.value);
     addIdsToSelection(ids);
+}
+
+// Selecionar todas as páginas
+function selectAllPages() {
+    showLoading(true);
+    
+    // Buscar todos os IDs do banco
+    fetch('/api/get_all_ids')
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            addIdsToSelection(data.ids);
+            showAlert(`Selecionados ${data.ids.length} registros de todas as páginas`, 'success');
+        } else {
+            showAlert('Erro ao carregar IDs: ' + data.message, 'danger');
+        }
+    })
+    .catch(error => {
+        showAlert('Erro ao selecionar todas as páginas: ' + error.message, 'danger');
+    })
+    .finally(() => {
+        showLoading(false);
+    });
 }
 
 // Limpar seleção

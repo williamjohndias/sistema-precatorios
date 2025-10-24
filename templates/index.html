@@ -28,9 +28,6 @@
                 <button class="btn me-2" onclick="undoChanges()" style="background-color:#F5E08A;border-color:#F5E08A;color:#000;">
                     <i class="fas fa-undo me-1"></i>Desfazer
                 </button>
-                <button class="btn" onclick="refreshData()" style="background-color:#F5C600;border-color:#F5C600;color:#000;">
-                    <i class="fas fa-sync me-1"></i>Atualizar Dados
-                </button>
             </div>
         </div>
     </nav>
@@ -366,12 +363,23 @@
                             <div id="selectedRecords" class="border p-2 mb-3" style="max-height: 200px; overflow-y: auto;">
                                 <small class="text-muted">Nenhum registro selecionado</small>
                             </div>
-                            <button class="btn btn-sm btn-outline-primary" onclick="selectAllVisible()">
-                                <i class="fas fa-check-square me-1"></i>Selecionar Todos Visíveis
-                            </button>
-                            <button class="btn btn-sm btn-outline-secondary ms-2" onclick="clearSelection()">
-                                <i class="fas fa-square me-1"></i>Limpar Seleção
-                            </button>
+                            <div class="btn-group mb-2" role="group">
+                                <button class="btn btn-sm btn-outline-primary" onclick="selectAllVisible()">
+                                    <i class="fas fa-check-square me-1"></i>Página Atual
+                                </button>
+                                <button class="btn btn-sm btn-outline-success" onclick="selectAllPages()">
+                                    <i class="fas fa-check-double me-1"></i>Todas as Páginas
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="clearSelection()">
+                                    <i class="fas fa-square me-1"></i>Limpar
+                                </button>
+                            </div>
+                            <div class="mb-2">
+                                <small class="text-muted">
+                                    <i class="fas fa-info-circle me-1"></i>
+                                    <span id="selectionInfo">Selecione registros para edição em massa</span>
+                                </small>
+                            </div>
                         </div>
                         <div class="col-md-6">
                             <h6>Campos para Atualizar:</h6>

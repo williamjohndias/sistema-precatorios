@@ -204,6 +204,57 @@ class DatabaseManager:
                 self.connection.rollback()
             return []
 
+    def get_log_filter_values(self, field: str) -> List[str]:
+        """Obtém valores únicos para filtros de logs"""
+        try:
+            if not self.connection or self.connection.closed:
+                if not self.connect():
+                    return []
+            
+            # Mapear campos para colunas da tabela
+            field_mapping = {
+                'organizacao': 'l.organizacao',
+                'prioridade': 'l.prioridade', 
+                'tribunal': 'l.tribunal',
+                'campo_modificado': 'l.campo_modificado',
+                'precatorio': 'l.precatorio'
+            }
+            
+            if field not in field_mapping:
+                return []
+            
+            column = field_mapping[field]
+            query = f"""
+                SELECT DISTINCT {column} as value
+                FROM precatorios_logs l
+                WHERE {column} IS NOT NULL AND {column} != ''
+                ORDER BY {column}
+            """
+            
+            self.cursor.execute(query)
+            results = self.cursor.fetchall()
+            
+            values = []
+            for row in results:
+                if isinstance(row, dict):
+                    value = row['value']
+                else:
+                    value = row[0]
+                
+                if value and str(value).strip():
+                    values.append(str(value).strip())
+            
+            return sorted(values)
+            
+        except psycopg2.Error as e:
+            logger.error(f"Erro ao buscar valores únicos para {field}: {e}")
+            if self.connection:
+                self.connection.rollback()
+            return []
+        except Exception as e:
+            logger.error(f"Erro inesperado ao buscar valores únicos para {field}: {e}")
+            return []
+
     def get_logs_paginated(self, page: int = 1, per_page: int = 50, filters: Dict[str, str] = None) -> Dict[str, Any]:
         """Obtém logs de alterações com paginação e filtros"""
         try:
@@ -229,18 +280,14 @@ class DatabaseManager:
             params = []
 
             if filters:
-                if filters.get('precatorio'):
-                    where_conditions.append("l.precatorio ILIKE %s")
-                    params.append(f"%{filters['precatorio']}%")
+                # Campos com correspondência exata (dropdowns)
+                exact_match_fields = ['organizacao', 'prioridade', 'tribunal', 'campo_modificado', 'precatorio']
+                for field in exact_match_fields:
+                    if filters.get(field):
+                        where_conditions.append(f"l.{field} = %s")
+                        params.append(filters[field])
 
-                if filters.get('organizacao'):
-                    where_conditions.append("l.organizacao ILIKE %s")
-                    params.append(f"%{filters['organizacao']}%")
-
-                if filters.get('campo'):
-                    where_conditions.append("l.campo_modificado ILIKE %s")
-                    params.append(f"%{filters['campo']}%")
-
+                # Campos com correspondência parcial (datas)
                 if filters.get('data_inicio'):
                     where_conditions.append("DATE(l.data_modificacao) >= %s")
                     params.append(filters['data_inicio'])
@@ -338,6 +385,96 @@ class DatabaseManager:
         except psycopg2.Error as e:
             logger.error(f"Erro ao registrar log: {e}")
             return False
+
+    def bulk_update_precatorios(self, updates_data: List[Dict[str, Any]]) -> Dict[str, int]:
+        """Atualização em massa usando uma única query SQL - muito mais rápida"""
+        try:
+            if not updates_data:
+                return {'success_count': 0, 'error_count': 0}
+            
+            # Preparar dados para atualização em massa
+            update_fields = []
+            case_statements = {}
+            ids = []
+            
+            # Obter campos que serão atualizados
+            first_update = updates_data[0]
+            for field, value in first_update['updates'].items():
+                if field != 'id':
+                    update_fields.append(field)
+                    case_statements[field] = f"CASE id "
+            
+            # Construir CASE statements para cada campo
+            for update_data in updates_data:
+                precatorio_id = update_data['id']
+                updates = update_data['updates']
+                ids.append(str(precatorio_id))
+                
+                for field in update_fields:
+                    value = updates.get(field)
+                    if value is not None:
+                        # Escapar aspas simples para SQL
+                        escaped_value = str(value).replace("'", "''")
+                        case_statements[field] += f"WHEN {precatorio_id} THEN '{escaped_value}' "
+            
+            # Finalizar CASE statements
+            for field in update_fields:
+                case_statements[field] += "ELSE " + field + " END"
+            
+            # Adicionar timestamp de atualização
+            current_time = get_brazil_time().replace(tzinfo=None)
+            case_statements['data_atualizacao'] = f"CASE id "
+            for precatorio_id in ids:
+                case_statements['data_atualizacao'] += f"WHEN {precatorio_id} THEN '{current_time}' "
+            case_statements['data_atualizacao'] += "ELSE data_atualizacao END"
+            
+            # Construir query de atualização em massa
+            set_clauses = []
+            for field in update_fields + ['data_atualizacao']:
+                set_clauses.append(f"{field} = {case_statements[field]}")
+            
+            ids_str = ','.join(ids)
+            query = f"""
+                UPDATE {TABLE_NAME}
+                SET {', '.join(set_clauses)}
+                WHERE id IN ({ids_str})
+            """
+            
+            logger.info(f"Executando atualização em massa para {len(ids)} registros")
+            self.cursor.execute(query)
+            
+            # Registrar logs para cada alteração
+            for update_data in updates_data:
+                precatorio_id = update_data['id']
+                updates = update_data['updates']
+                current_data = update_data.get('current_data', {})
+                
+                for field, new_value in updates.items():
+                    if field != 'id':
+                        old_value = current_data.get(field)
+                        if old_value != new_value:
+                            self.log_precatorio_change(
+                                precatorio_id=str(precatorio_id),
+                                field=field,
+                                old_value=old_value,
+                                new_value=new_value,
+                                organizacao=current_data.get('organizacao', ''),
+                                prioridade=current_data.get('prioridade', ''),
+                                tribunal=current_data.get('tribunal', ''),
+                                precatorio=current_data.get('precatorio', ''),
+                                ordem=current_data.get('ordem', 0)
+                            )
+            
+            self.connection.commit()
+            
+            logger.info(f"Atualização em massa concluída: {len(ids)} registros")
+            return {'success_count': len(ids), 'error_count': 0}
+            
+        except psycopg2.Error as e:
+            logger.error(f"Erro na atualização em massa: {e}")
+            if self.connection:
+                self.connection.rollback()
+            return {'success_count': 0, 'error_count': len(updates_data)}
 
     def update_precatorio(self, precatorio_id: str, updates: Dict[str, Any],
                           usuario: str = 'Sistema Web', ip_address: str = None, user_agent: str = None) -> bool:
@@ -664,46 +801,52 @@ def bulk_update():
         selected_ids = data.get('selected_ids', [])
         field_updates = data.get('field_updates', {})
         
-        logger.info(f"IDs selecionados: {selected_ids}")
+        logger.info(f"IDs selecionados: {len(selected_ids)} registros")
         logger.info(f"Campos para atualizar: {field_updates}")
         
         if not selected_ids or not field_updates:
             return jsonify({'success': False, 'message': 'Nenhum registro ou campo selecionado'})
         
-        success_count = 0
-        error_count = 0
-        errors = []
+        # Normalizar valores para padronização de tipos
+        normalized_updates = normalize_updates(field_updates)
         
-        # Obter informações do usuário para logging
-        usuario = request.headers.get('User-Agent', 'Sistema Web')
-        if len(usuario) > 100:
-            usuario = usuario[:97] + '...'
-        ip_address = request.remote_addr
+        # Buscar dados atuais de todos os registros selecionados
+        ids_str = ','.join(map(str, selected_ids))
+        current_query = f"""
+            SELECT id, organizacao, prioridade, tribunal, precatorio, ordem, 
+                   {', '.join(normalized_updates.keys())}
+            FROM {TABLE_NAME} 
+            WHERE id IN ({ids_str})
+        """
         
-        for precatorio_id in selected_ids:
-            try:
-                # Normalizar valores para padronização de tipos
-                normalized = normalize_updates(field_updates)
-                if db_manager.update_precatorio(str(precatorio_id), normalized, 
-                                              usuario=usuario, ip_address=ip_address, 
-                                              user_agent=request.headers.get('User-Agent')):
-                    success_count += 1
-                else:
-                    error_count += 1
-                    errors.append(f"Erro ao atualizar precatório {precatorio_id}")
-            except Exception as e:
-                error_count += 1
-                errors.append(f"Erro ao atualizar precatório {precatorio_id}: {e}")
-                logger.error(f"Erro na atualização em massa do precatório {precatorio_id}: {e}")
+        db_manager.cursor.execute(current_query)
+        current_data_list = db_manager.cursor.fetchall()
         
-        message = f"Atualização em massa concluída: {success_count} sucessos, {error_count} erros"
+        # Preparar dados para atualização em massa
+        updates_data = []
+        for row in current_data_list:
+            updates_data.append({
+                'id': row['id'],
+                'updates': normalized_updates,
+                'current_data': dict(row)
+            })
+        
+        # Executar atualização em massa
+        result = db_manager.bulk_update_precatorios(updates_data)
+        
+        success_count = result['success_count']
+        error_count = result['error_count']
+        
+        if error_count == 0:
+            message = f"Atualização em massa concluída: {success_count} registros atualizados"
+        else:
+            message = f"Atualização em massa concluída: {success_count} sucessos, {error_count} erros"
         
         return jsonify({
             'success': error_count == 0,
             'message': message,
             'success_count': success_count,
-            'error_count': error_count,
-            'errors': errors
+            'error_count': error_count
         })
         
     except Exception as e:
@@ -711,6 +854,42 @@ def bulk_update():
         import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
         return jsonify({'success': False, 'message': f'Erro interno: {e}'})
+    
+    finally:
+        db_manager.disconnect()
+
+@app.route('/api/get_all_ids', methods=['GET'])
+def get_all_ids():
+    """Retorna todos os IDs dos precatórios para seleção em massa"""
+    try:
+        if not db_manager.connect():
+            return jsonify({'success': False, 'message': 'Erro ao conectar com banco'})
+        
+        # Buscar todos os IDs com filtros aplicados
+        filters = {}
+        for key, value in request.args.items():
+            if key.startswith('filter_') and value:
+                field_name = key.replace('filter_', '')
+                filters[field_name] = value
+        
+        # Aplicar filtro padrão se não especificado
+        if 'esta_na_ordem' not in filters:
+            filters['esta_na_ordem'] = 'true'
+        
+        # Buscar IDs com os mesmos filtros da página principal
+        result = db_manager.get_precatorios_paginated(page=1, per_page=100000, filters=filters)
+        
+        ids = [str(row['id']) for row in result['data']]
+        
+        return jsonify({
+            'success': True,
+            'ids': ids,
+            'total': len(ids)
+        })
+        
+    except Exception as e:
+        logger.error(f"Erro ao buscar IDs: {e}")
+        return jsonify({'success': False, 'message': str(e)})
     
     finally:
         db_manager.disconnect()
@@ -740,11 +919,17 @@ def logs():
         
         # Filtros
         filters = {}
-        filter_fields = ['usuario', 'campo', 'precatorio', 'data_inicio', 'data_fim']
+        filter_fields = ['organizacao', 'prioridade', 'tribunal', 'campo_modificado', 'precatorio', 'data_inicio', 'data_fim']
         for field in filter_fields:
             value = request.args.get(f'filter_{field}', '').strip()
             if value:
                 filters[field] = value
+
+        # Obter valores únicos para os filtros dropdown
+        filter_values = {}
+        dropdown_fields = ['organizacao', 'prioridade', 'tribunal', 'campo_modificado', 'precatorio']
+        for field in dropdown_fields:
+            filter_values[field] = db_manager.get_log_filter_values(field)
 
         # Obter logs do banco de dados
         result = db_manager.get_logs_paginated(page=page, per_page=per_page, filters=filters)
@@ -755,7 +940,8 @@ def logs():
         return render_template('logs.html',
                              logs=result['data'],
                              pagination=result['pagination'],
-                             filters=filters)
+                             filters=filters,
+                             filter_values=filter_values)
     
     except Exception as e:
         logger.error(f"Erro na página de logs: {e}")
