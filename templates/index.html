@@ -93,20 +93,20 @@
                                     </select>
                                 </div>
                                 <div class="col-md-3 mb-2">
-                                    <label class="form-label">Regime</label>
-                                    <select class="form-control form-control-sm" name="filter_regime">
-                                        <option value="">Todos os regimes</option>
-                                        {% for value in filter_values.regime %}
-                                        <option value="{{ value }}" {% if filters.get('regime') == value %}selected{% endif %}>{{ value }}</option>
+                                    <label class="form-label">Prioridade</label>
+                                    <select class="form-control form-control-sm" name="filter_prioridade">
+                                        <option value="">Todas as prioridades</option>
+                                        {% for value in filter_values.prioridade %}
+                                        <option value="{{ value }}" {% if filters.get('prioridade') == value %}selected{% endif %}>{{ value }}</option>
                                         {% endfor %}
                                     </select>
                                 </div>
                                 <div class="col-md-3 mb-2">
-                                    <label class="form-label">Tipo</label>
-                                    <select class="form-control form-control-sm" name="filter_tipo">
-                                        <option value="">Todos os tipos</option>
-                                        {% for value in filter_values.tipo %}
-                                        <option value="{{ value }}" {% if filters.get('tipo') == value %}selected{% endif %}>{{ value }}</option>
+                                    <label class="form-label">Natureza</label>
+                                    <select class="form-control form-control-sm" name="filter_natureza">
+                                        <option value="">Todas as naturezas</option>
+                                        {% for value in filter_values.natureza %}
+                                        <option value="{{ value }}" {% if filters.get('natureza') == value %}selected{% endif %}>{{ value }}</option>
                                         {% endfor %}
                                     </select>
                                 </div>

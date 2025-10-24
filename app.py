@@ -99,9 +99,9 @@ class DatabaseManager:
         try:
             # Campos específicos solicitados (ordenados conforme especificação)
             fields = [
-                'id', 'precatorio', 'ordem', 'organizacao', 'regime', 'tipo', 'tribunal', 
+                'id', 'precatorio', 'ordem', 'organizacao', 'prioridade', 'tribunal', 
                 'natureza', 'data_base', 'originario', 'situacao', 'esta_na_ordem', 
-                'fora_da_ordem', 'ano_orc', 'valor', 'presenca_no_pipe'
+                'nao_esta_na_ordem', 'ano_orc', 'valor', 'presenca_no_pipe'
             ]
 
             # Validar campo de ordenação
@@ -123,7 +123,7 @@ class DatabaseManager:
                 for field, value in filters.items():
                     if value and field in fields:
                         # Para campos dropdown, usar comparação exata
-                        if field in ['organizacao', 'regime', 'tipo', 'tribunal', 'natureza', 'situacao', 'ano_orc', 'esta_na_ordem', 'fora_da_ordem', 'presenca_no_pipe']:
+                        if field in ['organizacao', 'prioridade', 'tribunal', 'natureza', 'situacao', 'ano_orc', 'esta_na_ordem', 'nao_esta_na_ordem', 'presenca_no_pipe']:
                             where_conditions.append(f"{field} = %s")
                             params.append(value)
                         else:
@@ -470,7 +470,7 @@ def index():
         
         # Obter valores únicos para filtros dropdown
         filter_values = {}
-        filter_fields = ['organizacao', 'regime', 'tipo', 'tribunal', 'situacao', 'ano_orc']
+        filter_fields = ['organizacao', 'prioridade', 'tribunal', 'natureza', 'situacao', 'ano_orc']
         for field in filter_fields:
             filter_values[field] = db_manager.get_filter_values(field)
         
@@ -480,9 +480,9 @@ def index():
             {'name': 'precatorio', 'label': 'Precatório', 'type': 'character varying', 'editable': False, 'visible': True},
             {'name': 'ordem', 'label': 'Ordem', 'type': 'integer', 'editable': False, 'visible': True},
             {'name': 'organizacao', 'label': 'Organização', 'type': 'character varying', 'editable': False, 'visible': True},
-            {'name': 'regime', 'label': 'Regime', 'type': 'character varying', 'editable': False, 'visible': True},
-            {'name': 'tipo', 'label': 'Tipo', 'type': 'character varying', 'editable': False, 'visible': True},
+            {'name': 'prioridade', 'label': 'Prioridade', 'type': 'character varying', 'editable': False, 'visible': True},
             {'name': 'tribunal', 'label': 'Tribunal', 'type': 'character varying', 'editable': False, 'visible': True},
+            {'name': 'natureza', 'label': 'Natureza', 'type': 'character varying', 'editable': False, 'visible': True},
             {'name': 'ano_orc', 'label': 'Ano Orçamentário', 'type': 'integer', 'editable': False, 'visible': True},
             {'name': 'situacao', 'label': 'Situação', 'type': 'character varying', 'editable': True, 'visible': True},
             {'name': 'valor', 'label': 'Valor', 'type': 'numeric', 'editable': True, 'visible': True},
