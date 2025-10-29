@@ -135,11 +135,15 @@
                                     </select>
                                 </div>
                                 <div class="col-md-3 mb-2">
-                                    <label class="form-label">Valor</label>
-                                    <input type="text" class="form-control form-control-sm" 
+                                    <label class="form-label">Valor (máx: R$ {{ "{:,.2f}".format(max_valor or 0) }})</label>
+                                    <input type="number" class="form-control form-control-sm" 
                                            name="filter_valor" 
                                            value="{{ filters.get('valor', '') }}"
-                                           placeholder="Filtrar por valor">
+                                           placeholder="Valor máximo"
+                                           min="0"
+                                           max="{{ max_valor or 0 }}"
+                                           step="0.01">
+                                    <small class="form-text text-muted">Precatórios com valor até R$ X</small>
                                 </div>
                                 <div class="col-md-3 mb-2">
                                     <label class="form-label">No Pipe</label>

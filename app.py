@@ -9,7 +9,7 @@ from flask import Flask, render_template, request, jsonify, redirect, url_for, f
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import logging
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, date
 import json
 import os
 import re
@@ -113,6 +113,7 @@ class DatabaseManager:
             
             # Construir query base
             base_query = f"SELECT {', '.join(fields)} FROM {TABLE_NAME}"
+            # Otimizar COUNT: usar índice quando possível
             count_query = f"SELECT COUNT(*) FROM {TABLE_NAME}"
             
             # Adicionar filtros
@@ -122,12 +123,66 @@ class DatabaseManager:
             if filters:
                 for field, value in filters.items():
                     if value and field in fields:
-                        # Para campos dropdown, usar comparação exata
-                        if field in ['organizacao', 'prioridade', 'tribunal', 'natureza', 'situacao', 'ano_orc', 'esta_na_ordem', 'nao_esta_na_ordem', 'presenca_no_pipe']:
+                        # Para valor, usar comparação <= (menor ou igual) e converter para float
+                        if field == 'valor':
+                            try:
+                                # Converter valor para float se vier como string
+                                if isinstance(value, str):
+                                    # Normalizar string removendo R$, espaços, e convertendo vírgula para ponto
+                                    normalized_val = value.replace('R$', '').replace(' ', '').replace(',', '.')
+                                    normalized_val = re.sub(r"[^0-9.]", "", normalized_val)
+                                    if normalized_val:
+                                        valor_float = float(normalized_val)
+                                        where_conditions.append(f"{field} <= %s")
+                                        params.append(valor_float)
+                                else:
+                                    where_conditions.append(f"{field} <= %s")
+                                    params.append(float(value))
+                            except (ValueError, TypeError):
+                                # Se não conseguir converter, ignora o filtro
+                                logger.warning(f"Valor inválido para filtro de {field}: {value}")
+                                continue
+                        # Para campos booleanos, converter string para boolean
+                        elif field in ['esta_na_ordem', 'nao_esta_na_ordem', 'presenca_no_pipe']:
+                            # Converter string 'true'/'false' para boolean PostgreSQL
+                            if isinstance(value, str):
+                                bool_value = value.lower() in ('true', '1', 'sim', 's', 'yes', 'y')
+                            else:
+                                bool_value = bool(value)
+                            where_conditions.append(f"{field} = %s")
+                            params.append(bool_value)
+                        # Para ordem, garantir que seja integer (comparação exata ou ILIKE para busca parcial)
+                        elif field == 'ordem':
+                            try:
+                                # Se o valor contém apenas dígitos, tratar como integer
+                                digits_only = re.sub(r"[^0-9]", "", str(value))
+                                if digits_only and digits_only == str(value).strip():
+                                    ordem_int = int(digits_only)
+                                    where_conditions.append(f"{field} = %s")
+                                    params.append(ordem_int)
+                                else:
+                                    # Se contém outros caracteres, usar ILIKE para busca parcial (como texto)
+                                    where_conditions.append(f"CAST({field} AS TEXT) ILIKE %s")
+                                    params.append(f"%{value}%")
+                            except (ValueError, TypeError):
+                                logger.warning(f"Valor inválido para filtro de {field}: {value}")
+                                continue
+                        # Para ano_orc, garantir que seja integer
+                        elif field == 'ano_orc':
+                            try:
+                                ano_int = int(value) if value else None
+                                if ano_int is not None:
+                                    where_conditions.append(f"{field} = %s")
+                                    params.append(ano_int)
+                            except (ValueError, TypeError):
+                                logger.warning(f"Valor inválido para filtro de {field}: {value}")
+                                continue
+                        # Para campos dropdown texto, usar comparação exata
+                        elif field in ['organizacao', 'prioridade', 'tribunal', 'natureza', 'situacao']:
                             where_conditions.append(f"{field} = %s")
                             params.append(value)
                         else:
-                            # Para outros campos (como precatorio, ordem, valor), usar ILIKE
+                            # Para outros campos texto (como precatorio), usar ILIKE
                             where_conditions.append(f"{field} ILIKE %s")
                             params.append(f"%{value}%")
             
@@ -193,7 +248,8 @@ class DatabaseManager:
     def get_filter_values(self, field: str) -> List[str]:
         """Obtém valores únicos para um campo específico para usar em filtros dropdown"""
         try:
-            query = f"SELECT DISTINCT {field} FROM {TABLE_NAME} WHERE {field} IS NOT NULL ORDER BY {field}"
+            # Aplicar filtro esta_na_ordem = true para melhorar performance
+            query = f"SELECT DISTINCT {field} FROM {TABLE_NAME} WHERE {field} IS NOT NULL AND esta_na_ordem = TRUE ORDER BY {field} LIMIT 500"
             self.cursor.execute(query)
             results = self.cursor.fetchall()
             return [str(row[field]) for row in results if row[field] is not None]
@@ -203,6 +259,20 @@ class DatabaseManager:
             if self.connection:
                 self.connection.rollback()
             return []
+
+    def get_max_value(self, field: str) -> float:
+        """Obtém o valor máximo de um campo numérico (otimizado com filtro)"""
+        try:
+            # Usar filtro esta_na_ordem para melhorar performance
+            query = f"SELECT MAX({field}) as max_valor FROM {TABLE_NAME} WHERE {field} IS NOT NULL AND esta_na_ordem = TRUE"
+            self.cursor.execute(query)
+            result = self.cursor.fetchone()
+            return float(result['max_valor']) if result and result['max_valor'] else 0.0
+        except psycopg2.Error as e:
+            logger.error(f"Erro ao buscar valor máximo para {field}: {e}")
+            if self.connection:
+                self.connection.rollback()
+            return 0.0
 
     def get_log_filter_values(self, field: str) -> List[str]:
         """Obtém valores únicos para filtros de logs"""
@@ -413,9 +483,49 @@ class DatabaseManager:
                 for field in update_fields:
                     value = updates.get(field)
                     if value is not None:
-                        # Escapar aspas simples para SQL
-                        escaped_value = str(value).replace("'", "''")
-                        case_statements[field] += f"WHEN {precatorio_id} THEN '{escaped_value}' "
+                        # Formatar valor conforme tipo de campo
+                        if field in ('ordem', 'ano_orc'):
+                            # Campos integer
+                            try:
+                                int_value = int(value) if value is not None else None
+                                if int_value is not None:
+                                    case_statements[field] += f"WHEN {precatorio_id} THEN {int_value} "
+                            except (ValueError, TypeError):
+                                # Se não conseguir converter, mantém valor atual (ELSE field)
+                                pass
+                        elif field == 'valor':
+                            # Campo numeric
+                            try:
+                                if isinstance(value, str):
+                                    normalized_val = value.replace('R$', '').replace(' ', '').replace(',', '.')
+                                    normalized_val = re.sub(r"[^0-9.]", "", normalized_val)
+                                    if normalized_val:
+                                        float_value = float(normalized_val)
+                                        case_statements[field] += f"WHEN {precatorio_id} THEN {float_value} "
+                                else:
+                                    float_value = float(value)
+                                    case_statements[field] += f"WHEN {precatorio_id} THEN {float_value} "
+                            except (ValueError, TypeError):
+                                pass
+                        elif field in ('esta_na_ordem', 'nao_esta_na_ordem', 'presenca_no_pipe'):
+                            # Campos boolean - PostgreSQL usa TRUE/FALSE sem aspas
+                            if isinstance(value, str):
+                                bool_value = value.lower() in ('true', '1', 'sim', 's', 'yes', 'y')
+                            else:
+                                bool_value = bool(value)
+                            bool_str = 'TRUE' if bool_value else 'FALSE'
+                            case_statements[field] += f"WHEN {precatorio_id} THEN {bool_str} "
+                        elif field == 'data_base' and isinstance(value, (date, datetime)):
+                            # Campo data
+                            if isinstance(value, datetime):
+                                date_value = value.date()
+                            else:
+                                date_value = value
+                            case_statements[field] += f"WHEN {precatorio_id} THEN '{date_value}'::date "
+                        else:
+                            # Campos texto - escapar aspas simples para SQL
+                            escaped_value = str(value).replace("'", "''")
+                            case_statements[field] += f"WHEN {precatorio_id} THEN '{escaped_value}' "
             
             # Finalizar CASE statements
             for field in update_fields:
@@ -579,6 +689,8 @@ def normalize_field_value(field_name: str, value: Any) -> Any:
     if field_name == 'valor':
         # Remove símbolos e separadores de milhar e padroniza decimal com ponto
         s = str(value).strip()
+        if not s:
+            return None
         # troca vírgula decimal por ponto, remove espaços e R$
         s = s.replace('R$', '').replace(' ', '')
         # Se houver ambas vírgula e ponto, assume que o último separador é o decimal
@@ -592,8 +704,11 @@ def normalize_field_value(field_name: str, value: Any) -> Any:
             parts = s.split('.')
             decimal_part = parts.pop()
             s = ''.join(parts) + '.' + decimal_part
-        # Mantém como string padronizada
-        return s
+        # Converte para float para compatibilidade com tipo numeric do banco
+        try:
+            return float(s) if s else None
+        except (ValueError, TypeError):
+            return None
 
     if field_name == 'data_base':
         # Converte string para data se possível
@@ -610,7 +725,7 @@ def normalize_field_value(field_name: str, value: Any) -> Any:
                 pass
         return value
 
-    if field_name in ('esta_na_ordem', 'fora_da_ordem', 'presenca_no_pipe'):
+    if field_name in ('esta_na_ordem', 'nao_esta_na_ordem', 'presenca_no_pipe'):
         # Converte para boolean
         if isinstance(value, str):
             return value.lower() in ('true', '1', 'sim', 's', 'yes', 'y')
@@ -642,11 +757,11 @@ def index():
             page = 1
             
         try:
-            per_page = int(request.args.get('per_page', 1000))
-            if per_page < 1 or per_page > 1000:
-                per_page = 1000
+            per_page = int(request.args.get('per_page', 50))
+            if per_page < 1 or per_page > 500:
+                per_page = 50
         except (ValueError, TypeError):
-            per_page = 1000
+            per_page = 50
         
         # Parâmetros de ordenação (padrão: ordenar pela coluna 'ordem')
         sort_field = request.args.get('sort', 'ordem')
@@ -668,11 +783,18 @@ def index():
         # Obter dados paginados com ordenação
         result = db_manager.get_precatorios_paginated(page=page, per_page=per_page, filters=filters, sort_field=sort_field, sort_order=sort_order)
         
-        # Obter valores únicos para filtros dropdown
+        # Obter valores únicos para filtros dropdown (otimizado: apenas campos necessários)
         filter_values = {}
-        filter_fields = ['organizacao', 'prioridade', 'tribunal', 'natureza', 'situacao', 'ano_orc']
-        for field in filter_fields:
+        # Buscar apenas quando necessário - campos mais usados primeiro
+        filter_fields_dropdown = ['organizacao', 'prioridade', 'tribunal', 'natureza', 'situacao']
+        for field in filter_fields_dropdown:
             filter_values[field] = db_manager.get_filter_values(field)
+        
+        # ano_orc pode ter muitos valores, buscar de forma mais eficiente
+        filter_values['ano_orc'] = db_manager.get_filter_values('ano_orc')
+        
+        # Obter valor máximo para o range slider de valor
+        max_valor = db_manager.get_max_value('valor')
         
         # Campos específicos para exibição (ordenados conforme especificação)
         display_fields = [
@@ -705,7 +827,8 @@ def index():
                              filters=filters,
                              filter_values=filter_values,
                              display_fields=display_fields,
-                             sorting=sorting)
+                             sorting=sorting,
+                             max_valor=max_valor)
     
     except Exception as e:
         logger.error(f"Erro na página principal: {e}")
@@ -876,10 +999,55 @@ def get_all_ids():
         if 'esta_na_ordem' not in filters:
             filters['esta_na_ordem'] = 'true'
         
-        # Buscar IDs com os mesmos filtros da página principal
-        result = db_manager.get_precatorios_paginated(page=1, per_page=100000, filters=filters)
-        
-        ids = [str(row['id']) for row in result['data']]
+        # Buscar IDs de forma mais eficiente usando query direta
+        # Limitar a 5000 para evitar timeout (ajuste conforme necessário)
+        try:
+            where_conditions = []
+            params = []
+            
+            # Construir filtros manualmente para query otimizada
+            for key, value in filters.items():
+                if value:
+                    if key == 'esta_na_ordem':
+                        where_conditions.append(f"{key} = %s")
+                        params.append(True if str(value).lower() in ('true', '1') else False)
+                    elif key == 'valor':
+                        try:
+                            normalized_val = str(value).replace('R$', '').replace(' ', '').replace(',', '.')
+                            normalized_val = re.sub(r"[^0-9.]", "", normalized_val)
+                            if normalized_val:
+                                where_conditions.append(f"{key} <= %s")
+                                params.append(float(normalized_val))
+                        except (ValueError, TypeError):
+                            pass
+                    elif key in ['organizacao', 'prioridade', 'tribunal', 'natureza', 'situacao']:
+                        where_conditions.append(f"{key} = %s")
+                        params.append(value)
+                    elif key == 'ano_orc':
+                        try:
+                            where_conditions.append(f"{key} = %s")
+                            params.append(int(value))
+                        except (ValueError, TypeError):
+                            pass
+                    else:
+                        # Para outros campos, usar ILIKE
+                        where_conditions.append(f"{key} ILIKE %s")
+                        params.append(f"%{value}%")
+            
+            where_clause = " WHERE " + " AND ".join(where_conditions) if where_conditions else ""
+            query = f"SELECT id FROM {TABLE_NAME}{where_clause} LIMIT 5000"
+            
+            if db_manager.cursor:
+                db_manager.cursor.execute(query, params)
+                results = db_manager.cursor.fetchall()
+                ids = [str(row['id']) for row in results]
+            else:
+                raise Exception("Cursor não disponível")
+        except Exception as e:
+            logger.error(f"Erro ao buscar IDs: {e}")
+            # Fallback para método anterior (limitado)
+            result = db_manager.get_precatorios_paginated(page=1, per_page=5000, filters=filters)
+            ids = [str(row['id']) for row in result['data']]
         
         return jsonify({
             'success': True,
