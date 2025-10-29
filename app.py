@@ -58,11 +58,11 @@ class DatabaseManager:
             # Configurações otimizadas para Vercel
             conn_params = DB_CONFIG.copy()
             conn_params.update({
-                'connect_timeout': 10,  # Timeout de conexão reduzido
+                'connect_timeout': 5,  # Timeout de conexão reduzido ainda mais
                 'application_name': 'precatorios_vercel',
-                'keepalives_idle': 600,
-                'keepalives_interval': 30,
-                'keepalives_count': 3
+                'keepalives_idle': 300,  # Reduzido para evitar timeouts
+                'keepalives_interval': 10,  # Mais frequente
+                'keepalives_count': 2  # Menos tentativas
             })
             
             logger.info(f"Tentando conectar ao banco: {conn_params['host']}:{conn_params['port']}")
@@ -98,10 +98,11 @@ class DatabaseManager:
         """Obtém precatórios com paginação, filtros e ordenação - otimizado para Vercel"""
         try:
             # Campos específicos solicitados (ordenados conforme especificação)
+            # Incluindo todos os campos do banco que são necessários
             fields = [
                 'id', 'precatorio', 'ordem', 'organizacao', 'prioridade', 'tribunal', 
                 'natureza', 'data_base', 'originario', 'situacao', 'esta_na_ordem', 
-                'nao_esta_na_ordem', 'ano_orc', 'valor', 'presenca_no_pipe'
+                'nao_esta_na_ordem', 'ano_orc', 'valor', 'presenca_no_pipe', 'regime'
             ]
 
             # Validar campo de ordenação
@@ -142,6 +143,31 @@ class DatabaseManager:
                                 # Se não conseguir converter, ignora o filtro
                                 logger.warning(f"Valor inválido para filtro de {field}: {value}")
                                 continue
+                        # Para filtros de valor range (valor_min e valor_max)
+                        elif field == 'valor_min':
+                            try:
+                                # Converter valor mínimo para float
+                                normalized_val = value.replace('R$', '').replace(' ', '').replace(',', '.')
+                                normalized_val = re.sub(r"[^0-9.]", "", normalized_val)
+                                if normalized_val:
+                                    valor_min_float = float(normalized_val)
+                                    where_conditions.append(f"valor >= %s")
+                                    params.append(valor_min_float)
+                            except (ValueError, TypeError):
+                                logger.warning(f"Valor mínimo inválido: {value}")
+                                continue
+                        elif field == 'valor_max':
+                            try:
+                                # Converter valor máximo para float
+                                normalized_val = value.replace('R$', '').replace(' ', '').replace(',', '.')
+                                normalized_val = re.sub(r"[^0-9.]", "", normalized_val)
+                                if normalized_val:
+                                    valor_max_float = float(normalized_val)
+                                    where_conditions.append(f"valor <= %s")
+                                    params.append(valor_max_float)
+                            except (ValueError, TypeError):
+                                logger.warning(f"Valor máximo inválido: {value}")
+                                continue
                         # Para campos booleanos, converter string para boolean
                         elif field in ['esta_na_ordem', 'nao_esta_na_ordem', 'presenca_no_pipe']:
                             # Converter string 'true'/'false' para boolean PostgreSQL
@@ -178,7 +204,7 @@ class DatabaseManager:
                                 logger.warning(f"Valor inválido para filtro de {field}: {value}")
                                 continue
                         # Para campos dropdown texto, usar comparação exata
-                        elif field in ['organizacao', 'prioridade', 'tribunal', 'natureza', 'situacao']:
+                        elif field in ['organizacao', 'prioridade', 'tribunal', 'natureza', 'situacao', 'regime']:
                             where_conditions.append(f"{field} = %s")
                             params.append(value)
                         else:
@@ -249,6 +275,7 @@ class DatabaseManager:
         """Obtém valores únicos para um campo específico para usar em filtros dropdown"""
         try:
             # Aplicar filtro esta_na_ordem = true para melhorar performance
+            # Usar índice quando possível
             query = f"SELECT DISTINCT {field} FROM {TABLE_NAME} WHERE {field} IS NOT NULL AND esta_na_ordem = TRUE ORDER BY {field} LIMIT 500"
             self.cursor.execute(query)
             results = self.cursor.fetchall()
@@ -259,7 +286,60 @@ class DatabaseManager:
             if self.connection:
                 self.connection.rollback()
             return []
-
+    
+    def get_all_filter_values(self, fields: List[str]) -> Dict[str, List[str]]:
+        """Obtém valores únicos para múltiplos campos otimizado"""
+        try:
+            results = {}
+            
+            # Executar queries de forma otimizada (limitar resultados e usar índices)
+            for field in fields:
+                try:
+                    # Limitar a 50 resultados para melhorar performance e evitar timeout
+                    query = f"SELECT DISTINCT {field} FROM {TABLE_NAME} WHERE {field} IS NOT NULL AND esta_na_ordem = TRUE ORDER BY {field} LIMIT 50"
+                    self.cursor.execute(query)
+                    field_results = self.cursor.fetchall()
+                    results[field] = [str(row[field]) for row in field_results if row[field] is not None]
+                except psycopg2.Error as e:
+                    logger.warning(f"Erro ao buscar valores únicos para {field}: {e}")
+                    results[field] = []
+            
+            return results
+        except Exception as e:
+            logger.error(f"Erro ao buscar valores únicos em batch: {e}")
+            if self.connection:
+                self.connection.rollback()
+            return {field: [] for field in fields}
+    
+    def get_table_structure(self) -> Dict[str, Any]:
+        """Retorna a estrutura da tabela precatorios para diagnóstico"""
+        try:
+            query = """
+                SELECT column_name, data_type, is_nullable, character_maximum_length, numeric_precision, numeric_scale
+                FROM information_schema.columns
+                WHERE table_name = %s AND table_schema = 'public'
+                ORDER BY ordinal_position
+            """
+            self.cursor.execute(query, [TABLE_NAME])
+            columns = self.cursor.fetchall()
+            
+            structure = {}
+            for col in columns:
+                structure[col['column_name']] = {
+                    'data_type': col['data_type'],
+                    'is_nullable': col['is_nullable'],
+                    'max_length': col['character_maximum_length'],
+                    'numeric_precision': col['numeric_precision'],
+                    'numeric_scale': col['numeric_scale']
+                }
+            
+            return structure
+        except psycopg2.Error as e:
+            logger.error(f"Erro ao obter estrutura da tabela: {e}")
+            if self.connection:
+                self.connection.rollback()
+            return {}
+    
     def get_max_value(self, field: str) -> float:
         """Obtém o valor máximo de um campo numérico (otimizado com filtro)"""
         try:
@@ -745,6 +825,7 @@ def index():
     """Página principal - otimizada para Vercel"""
     try:
         if not db_manager.connect():
+            logger.error("Falha ao conectar com banco de dados")
             flash('Erro ao conectar com o banco de dados', 'error')
             return render_template('error.html')
         
@@ -770,31 +851,82 @@ def index():
         # Filtros
         filters = {}
         filter_fields = ['precatorio', 'ordem', 'organizacao', 'regime', 'tipo', 'tribunal', 
-                         'situacao', 'ano_orc', 'valor', 'presenca_no_pipe', 'esta_na_ordem']
+                         'situacao', 'ano_orc', 'presenca_no_pipe', 'esta_na_ordem']
         for field in filter_fields:
             value = request.args.get(f'filter_{field}', '').strip()
             if value:
                 filters[field] = value
         
+        # Filtros de valor (valor_min e valor_max)
+        valor_min = request.args.get('filter_valor_min', '').strip()
+        valor_max = request.args.get('filter_valor_max', '').strip()
+        
+        # Se valor_max estiver vazio mas tiver valor antigo (compatibilidade)
+        if not valor_max and 'valor' not in filter_fields:
+            valor_max = request.args.get('filter_valor', '').strip()
+        
+        if valor_min or valor_max:
+            filters['valor_min'] = valor_min if valor_min else '0.00'
+            filters['valor_max'] = valor_max if valor_max else str(max_valor or 1000000.0)
+        
         # Filtro padrão: mostrar apenas precatórios que estão na ordem
         if 'esta_na_ordem' not in filters:
             filters['esta_na_ordem'] = 'true'
         
-        # Obter dados paginados com ordenação
-        result = db_manager.get_precatorios_paginated(page=page, per_page=per_page, filters=filters, sort_field=sort_field, sort_order=sort_order)
+        # Obter valor máximo para o range slider de valor (precisa vir antes dos filtros)
+        try:
+            max_valor = db_manager.get_max_value('valor')
+        except Exception as e:
+            logger.warning(f"Erro ao buscar valor máximo: {e}")
+            max_valor = 1000000.0  # Valor padrão
         
-        # Obter valores únicos para filtros dropdown (otimizado: apenas campos necessários)
+        # Ajustar filtro de valor_max se não tiver valor definido
+        if 'valor_max' in filters and not filters['valor_max']:
+            filters['valor_max'] = str(max_valor)
+        
+        # Obter dados paginados com ordenação (PRIORIDADE: carregar isso primeiro)
+        try:
+            result = db_manager.get_precatorios_paginated(page=page, per_page=per_page, filters=filters, sort_field=sort_field, sort_order=sort_order)
+        except Exception as e:
+            logger.error(f"Erro ao buscar precatórios: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            result = {
+                'data': [],
+                'pagination': {
+                    'page': page,
+                    'per_page': per_page,
+                    'total': 0,
+                    'total_count': 0,
+                    'total_pages': 0,
+                    'has_prev': False,
+                    'has_next': False,
+                    'prev_num': None,
+                    'next_num': None
+                }
+            }
+        
+        # Obter valores únicos para filtros dropdown (SIMPLIFICADO: apenas essenciais)
+        # Carregar dropdowns de forma rápida e limitada para não travar
         filter_values = {}
-        # Buscar apenas quando necessário - campos mais usados primeiro
-        filter_fields_dropdown = ['organizacao', 'prioridade', 'tribunal', 'natureza', 'situacao']
+        filter_fields_dropdown = ['organizacao', 'prioridade', 'tribunal', 'natureza', 'situacao', 'regime', 'ano_orc']
+        
+        # Inicializar todos com vazio primeiro
         for field in filter_fields_dropdown:
-            filter_values[field] = db_manager.get_filter_values(field)
+            filter_values[field] = []
         
-        # ano_orc pode ter muitos valores, buscar de forma mais eficiente
-        filter_values['ano_orc'] = db_manager.get_filter_values('ano_orc')
+        # Tentar carregar os principais dropdowns
+        try:
+            # Carregar campos principais de forma rápida
+            for field in ['organizacao', 'prioridade', 'tribunal', 'regime']:
+                try:
+                    filter_values[field] = db_manager.get_filter_values(field)
+                except:
+                    pass
+        except:
+            pass  # Se falhar, continua com arrays vazios
         
-        # Obter valor máximo para o range slider de valor
-        max_valor = db_manager.get_max_value('valor')
+        # max_valor já foi obtido anteriormente (não buscar novamente)
         
         # Campos específicos para exibição (ordenados conforme especificação)
         display_fields = [
@@ -805,15 +937,21 @@ def index():
             {'name': 'prioridade', 'label': 'Prioridade', 'type': 'character varying', 'editable': False, 'visible': True},
             {'name': 'tribunal', 'label': 'Tribunal', 'type': 'character varying', 'editable': False, 'visible': True},
             {'name': 'natureza', 'label': 'Natureza', 'type': 'character varying', 'editable': False, 'visible': True},
+            {'name': 'regime', 'label': 'Regime', 'type': 'character varying', 'editable': False, 'visible': True},
             {'name': 'ano_orc', 'label': 'Ano Orçamentário', 'type': 'integer', 'editable': False, 'visible': True},
             {'name': 'situacao', 'label': 'Situação', 'type': 'character varying', 'editable': True, 'visible': True},
             {'name': 'valor', 'label': 'Valor', 'type': 'numeric', 'editable': True, 'visible': True},
             {'name': 'presenca_no_pipe', 'label': 'No Pipe', 'type': 'boolean', 'editable': False, 'visible': True},
         ]
         
-        # Armazenar dados originais para desfazer
+        # Armazenar dados originais para desfazer (simplificado - evitar deepcopy pesado)
         global original_data
-        original_data = {str(p['id']): copy.deepcopy(p) for p in result['data']}
+        try:
+            # Usar dict comprehension simples em vez de deepcopy para melhor performance
+            original_data = {str(p['id']): dict(p) for p in result['data']}
+        except Exception as e:
+            logger.warning(f"Erro ao copiar dados originais: {e}")
+            original_data = {}
         
         # Informações de ordenação
         sorting = {
@@ -831,14 +969,20 @@ def index():
                              max_valor=max_valor)
     
     except Exception as e:
-        logger.error(f"Erro na página principal: {e}")
+        logger.error(f"Erro crítico na página principal: {e}")
         import traceback
-        logger.error(f"Traceback: {traceback.format_exc()}")
-        flash(f'Erro ao carregar dados: {e}', 'error')
-        return render_template('error.html')
-    
+        logger.error(f"Traceback completo: {traceback.format_exc()}")
+        try:
+            flash(f'Erro ao carregar dados: {str(e)[:100]}', 'error')
+            return render_template('error.html')
+        except:
+            # Se até renderizar erro falhar, retorna resposta simples
+            return f"<h1>Erro</h1><p>Ocorreu um erro: {str(e)[:200]}</p>", 500
     finally:
-        db_manager.disconnect()
+        try:
+            db_manager.disconnect()
+        except:
+            pass  # Não deixar erro de desconexão quebrar a resposta
 
 @app.route('/update', methods=['POST'])
 def update_data():
@@ -1020,7 +1164,7 @@ def get_all_ids():
                                 params.append(float(normalized_val))
                         except (ValueError, TypeError):
                             pass
-                    elif key in ['organizacao', 'prioridade', 'tribunal', 'natureza', 'situacao']:
+                    elif key in ['organizacao', 'prioridade', 'tribunal', 'natureza', 'situacao', 'regime']:
                         where_conditions.append(f"{key} = %s")
                         params.append(value)
                     elif key == 'ano_orc':
@@ -1157,6 +1301,30 @@ def refresh_data():
             'success': False,
             'message': f'Erro ao recarregar dados: {e}'
         })
+
+@app.route('/api/debug/structure', methods=['GET'])
+def debug_table_structure():
+    """Rota de diagnóstico para verificar estrutura da tabela"""
+    try:
+        if not db_manager.connect():
+            return jsonify({'success': False, 'message': 'Erro ao conectar com banco'})
+        
+        structure = db_manager.get_table_structure()
+        return jsonify({
+            'success': True,
+            'structure': structure,
+            'columns': list(structure.keys()),
+            'current_fields_in_code': [
+                'id', 'precatorio', 'ordem', 'organizacao', 'prioridade', 'tribunal', 
+                'natureza', 'data_base', 'originario', 'situacao', 'esta_na_ordem', 
+                'nao_esta_na_ordem', 'ano_orc', 'valor', 'presenca_no_pipe', 'regime'
+            ]
+        })
+    except Exception as e:
+        logger.error(f"Erro ao obter estrutura: {e}")
+        return jsonify({'success': False, 'message': str(e)})
+    finally:
+        db_manager.disconnect()
 
 # Configuração específica para Vercel
 if __name__ == "__main__":

@@ -135,15 +135,38 @@
                                     </select>
                                 </div>
                                 <div class="col-md-3 mb-2">
+                                    <label class="form-label">Regime</label>
+                                    <select class="form-control form-control-sm" name="filter_regime">
+                                        <option value="">Todos os regimes</option>
+                                        {% for value in filter_values.regime %}
+                                        <option value="{{ value }}" {% if filters.get('regime') == value %}selected{% endif %}>{{ value }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-6 mb-2">
                                     <label class="form-label">Valor (máx: R$ {{ "{:,.2f}".format(max_valor or 0) }})</label>
-                                    <input type="number" class="form-control form-control-sm" 
-                                           name="filter_valor" 
-                                           value="{{ filters.get('valor', '') }}"
-                                           placeholder="Valor máximo"
-                                           min="0"
-                                           max="{{ max_valor or 0 }}"
-                                           step="0.01">
-                                    <small class="form-text text-muted">Precatórios com valor até R$ X</small>
+                                    <div class="row">
+                                        <div class="col-6">
+                                            <input type="number" class="form-control form-control-sm" 
+                                                   name="filter_valor_min" 
+                                                   value="{{ filters.get('valor_min', '0.00') }}"
+                                                   placeholder="Valor mínimo"
+                                                   min="0"
+                                                   max="{{ max_valor or 0 }}"
+                                                   step="0.01">
+                                            <small class="form-text text-muted">Mínimo</small>
+                                        </div>
+                                        <div class="col-6">
+                                            <input type="number" class="form-control form-control-sm" 
+                                                   name="filter_valor_max" 
+                                                   value="{{ filters.get('valor_max', filters.get('valor', max_valor or 0)) }}"
+                                                   placeholder="Valor máximo"
+                                                   min="0"
+                                                   max="{{ max_valor or 0 }}"
+                                                   step="0.01">
+                                            <small class="form-text text-muted">Máximo</small>
+                                        </div>
+                                    </div>
                                 </div>
                                 <div class="col-md-3 mb-2">
                                     <label class="form-label">No Pipe</label>
@@ -163,14 +186,22 @@
                                     <small class="form-text text-muted">Padrão: Apenas na ordem</small>
                                 </div>
                             </div>
-                            <div class="row mt-2">
-                                <div class="col-12">
-                                    <button type="submit" class="btn btn-primary btn-sm">
-                                        <i class="fas fa-search me-1"></i>Filtrar
+                            <div class="row mt-3">
+                                <div class="col-12 text-center">
+                                    <button type="submit" class="btn btn-filter">
+                                        <i class="fas fa-search me-2"></i>Aplicar Filtros
                                     </button>
-                                    <a href="{{ url_for('index') }}" class="btn btn-secondary btn-sm ms-2">
-                                        <i class="fas fa-times me-1"></i>Limpar Filtros
+                                    <a href="{{ url_for('index') }}" class="btn btn-filter-clear ms-2">
+                                        <i class="fas fa-redo me-2"></i>Limpar Filtros
                                     </a>
+                                </div>
+                            </div>
+                            <div class="row mt-2">
+                                <div class="col-12 text-center">
+                                    <small class="text-muted">
+                                        <i class="fas fa-info-circle me-1"></i>
+                                        Colunas <span class="fw-bold" style="color: #D2AF52;">destacadas</span> são editáveis
+                                    </small>
                                 </div>
                             </div>
                         </form>
@@ -194,14 +225,14 @@
                     <div class="card-body p-0">
                         <div class="table-responsive" style="max-height: 70vh; overflow-y: auto;">
                             <table class="table table-striped table-hover mb-0" id="dataTable">
-                                <thead class="sticky-top" style="background-color:#D2AF52;color:#000;">
+                                <thead class="sticky-top">
                                     <tr>
                                         <th class="text-center" style="width: 50px;">
                                             <input type="checkbox" id="selectAll" onchange="toggleSelectAll()">
                                         </th>
                                         {% for field in display_fields %}
                                         {% if field.visible %}
-                                        <th class="text-center sortable-header" 
+                                        <th class="text-center sortable-header {% if field.name == 'situacao' or field.name == 'valor' %}col-{{ field.name }}{% endif %}" 
                                             data-field="{{ field.name }}"
                                             style="cursor: pointer;">
                                             {{ field.label }}
@@ -232,7 +263,7 @@
                                         </td>
                                         {% for field in display_fields %}
                                         {% if field.visible %}
-                                        <td class="text-center" 
+                                        <td class="text-center {% if field.name == 'situacao' or field.name == 'valor' %}col-{{ field.name }}{% endif %}" 
                                             data-field="{{ field.name }}"
                                             data-original="{{ precatorio[field.name] or '' }}"
                                             data-type="{{ field.type }}">
