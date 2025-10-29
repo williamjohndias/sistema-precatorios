@@ -652,63 +652,76 @@ tr.selected:hover {
 
 /* ===== COLUNAS EDITÁVEIS DESTACADAS ===== */
 
-/* Coluna Situação editável */
-.table th.col-situacao,
-.table td.col-situacao {
-    background-color: rgba(210, 175, 82, 0.1) !important;
-    border-left: 3px solid #D2AF52;
-    border-right: 3px solid #D2AF52;
+/* Coluna Situação editável - destaque mais discreto */
+.table th.col-situacao {
+    background-color: #343a40 !important;
+    border-left: 2px solid #D2AF52;
+    position: relative;
 }
 
-.table th.col-situacao {
-    background: linear-gradient(135deg, rgba(210, 175, 82, 0.3) 0%, rgba(245, 198, 0, 0.3) 100%) !important;
-    position: relative;
+.table td.col-situacao {
+    background-color: #ffffff !important;
+    border-left: 2px solid #D2AF52;
+}
+
+.table-striped > tbody > tr:nth-of-type(odd) > td.col-situacao {
+    background-color: rgba(248, 249, 250, 0.5) !important;
 }
 
 .table th.col-situacao::after {
     content: " ✏️";
-    font-size: 0.8rem;
+    font-size: 0.7rem;
     margin-left: 3px;
+    opacity: 0.7;
 }
 
-/* Coluna Valor editável */
-.table th.col-valor,
-.table td.col-valor {
-    background-color: rgba(210, 175, 82, 0.1) !important;
-    border-left: 3px solid #D2AF52;
-    border-right: 3px solid #D2AF52;
-}
-
+/* Coluna Valor editável - destaque mais discreto */
 .table th.col-valor {
-    background: linear-gradient(135deg, rgba(210, 175, 82, 0.3) 0%, rgba(245, 198, 0, 0.3) 100%) !important;
+    background-color: #343a40 !important;
+    border-left: 2px solid #D2AF52;
     position: relative;
+}
+
+.table td.col-valor {
+    background-color: #ffffff !important;
+    border-left: 2px solid #D2AF52;
+}
+
+.table-striped > tbody > tr:nth-of-type(odd) > td.col-valor {
+    background-color: rgba(248, 249, 250, 0.5) !important;
 }
 
 .table th.col-valor::after {
     content: " ✏️";
-    font-size: 0.8rem;
+    font-size: 0.7rem;
     margin-left: 3px;
+    opacity: 0.7;
 }
 
-/* Hover nas colunas editáveis */
+/* Hover nas colunas editáveis - mais discreto */
 .table td.col-situacao:hover,
 .table td.col-valor:hover {
-    background-color: rgba(210, 175, 82, 0.2) !important;
+    background-color: rgba(210, 175, 82, 0.05) !important;
     cursor: pointer;
+}
+
+.table td.col-situacao:focus,
+.table td.col-valor:focus {
+    background-color: rgba(210, 175, 82, 0.08) !important;
 }
 
 /* Campos de entrada nas colunas editáveis */
 .table td.col-situacao input,
 .table td.col-valor input {
-    background-color: rgba(255, 255, 255, 0.9);
-    border: 1.5px solid #D2AF52;
+    background-color: #ffffff;
+    border: 1px solid #ced4da;
 }
 
 .table td.col-situacao input:focus,
 .table td.col-valor input:focus {
     background-color: #fff;
-    border-color: #F5C600;
-    box-shadow: 0 0 0 0.2rem rgba(245, 198, 0, 0.3);
+    border-color: #D2AF52;
+    box-shadow: 0 0 0 0.15rem rgba(210, 175, 82, 0.2);
 }
 
 /* Badge indicativo de coluna editável */

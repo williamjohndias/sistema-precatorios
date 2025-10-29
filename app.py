@@ -838,11 +838,11 @@ def index():
             page = 1
             
         try:
-            per_page = int(request.args.get('per_page', 50))
-            if per_page < 1 or per_page > 500:
-                per_page = 50
+            per_page = int(request.args.get('per_page', 1000))
+            if per_page < 1 or per_page > 2000:
+                per_page = 1000
         except (ValueError, TypeError):
-            per_page = 50
+            per_page = 1000
         
         # Parâmetros de ordenação (padrão: ordenar pela coluna 'ordem')
         sort_field = request.args.get('sort', 'ordem')
