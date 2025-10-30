@@ -9,20 +9,20 @@
     <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
 </head>
 <body>
-    <nav class="navbar navbar-dark" style="background-color: #D2AF52;">
+    <nav class="navbar navbar-dark" style="background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);">
         <div class="container-fluid">
             <span class="navbar-brand mb-0 h1">
                 <i class="fas fa-database me-2"></i>
                 ORDEM CRONOLÓGICA DE PRECATÓRIOS
             </span>
             <div class="d-flex">
-                <a class="btn btn-outline-light me-2" href="{{ url_for('logs') }}" style="border-color:#fff;color:#fff;">
+                <a class="btn btn-outline-light me-2" href="{{ url_for('logs') }}" style="border-color:#D2AF52;color:#D2AF52;background-color:rgba(210,175,82,0.1);">
                     <i class="fas fa-history me-1"></i>Logs
                 </a>
-                <button class="btn me-2" onclick="openBulkEditModal()" style="background-color:#F5C600;border-color:#F5C600;color:#000;">
+                <button class="btn me-2" onclick="openBulkEditModal()" style="background: linear-gradient(135deg, #D2AF52 0%, #F5C600 100%);border:none;color:#000;">
                     <i class="fas fa-edit me-1"></i>Edição em Massa
                 </button>
-                <button class="btn me-2" onclick="saveChanges()" style="background-color:#D2AF52;border-color:#D2AF52;color:#000;">
+                <button class="btn me-2" onclick="saveChanges()" style="background: linear-gradient(135deg, #D2AF52 0%, #F5C600 100%);border:none;color:#000;">
                     <i class="fas fa-save me-1"></i>Atualizar
                 </button>
                 <button class="btn me-2" onclick="undoChanges()" style="background-color:#F5E08A;border-color:#F5E08A;color:#000;">
@@ -82,12 +82,17 @@
                                 </div>
                                 <div class="col-md-3 mb-2">
                                     <label class="form-label">Organização</label>
-                                    <select class="form-control form-control-sm" name="filter_organizacao">
-                                        <option value="">Todas as organizações</option>
+                                    <input type="text"
+                                           class="form-control form-control-sm"
+                                           name="filter_organizacao"
+                                           list="organizacaoList"
+                                           value="{{ filters.get('organizacao', '') }}"
+                                           placeholder="Digite para buscar...">
+                                    <datalist id="organizacaoList">
                                         {% for value in filter_values.organizacao %}
-                                        <option value="{{ value }}" {% if filters.get('organizacao') == value %}selected{% endif %}>{{ value }}</option>
+                                        <option value="{{ value }}">
                                         {% endfor %}
-                                    </select>
+                                    </datalist>
                                 </div>
                                 <div class="col-md-3 mb-2">
                                     <label class="form-label">Prioridade</label>
@@ -144,29 +149,15 @@
                                     </select>
                                 </div>
                                 <div class="col-md-6 mb-2">
-                                    <label class="form-label">Valor (máx: R$ {{ "{:,.2f}".format(max_valor or 0) }})</label>
-                                    <div class="row">
-                                        <div class="col-6">
-                                            <input type="number" class="form-control form-control-sm" 
-                                                   name="filter_valor_min" 
-                                                   value="{{ filters.get('valor_min', '0.00') }}"
-                                                   placeholder="Valor mínimo"
-                                                   min="0"
-                                                   max="{{ max_valor or 0 }}"
-                                                   step="0.01">
-                                            <small class="form-text text-muted">Mínimo</small>
-                                        </div>
-                                        <div class="col-6">
-                                            <input type="number" class="form-control form-control-sm" 
-                                                   name="filter_valor_max" 
-                                                   value="{{ filters.get('valor_max', filters.get('valor', max_valor or 0)) }}"
-                                                   placeholder="Valor máximo"
-                                                   min="0"
-                                                   max="{{ max_valor or 0 }}"
-                                                   step="0.01">
-                                            <small class="form-text text-muted">Máximo</small>
-                                        </div>
-                                    </div>
+                                    <label class="form-label">Valor até R$ (máx: {{ max_valor | currency_br }})</label>
+                                    <input type="number" class="form-control form-control-sm"
+                                           name="filter_valor"
+                                           value="{{ filters.get('valor', '0') }}"
+                                           placeholder="Filtrar até este valor"
+                                           min="0"
+                                           max="{{ max_valor or 0 }}"
+                                           step="0.01">
+                                    <small class="form-text text-muted">Deixe 0 para não filtrar por valor</small>
                                 </div>
                                 <div class="col-md-3 mb-2">
                                     <label class="form-label">No Pipe</label>
@@ -194,14 +185,6 @@
                                     <a href="{{ url_for('index') }}" class="btn btn-filter-clear ms-2">
                                         <i class="fas fa-redo me-2"></i>Limpar Filtros
                                     </a>
-                                </div>
-                            </div>
-                            <div class="row mt-2">
-                                <div class="col-12 text-center">
-                                    <small class="text-muted">
-                                        <i class="fas fa-info-circle me-1"></i>
-                                        Colunas <span class="fw-bold" style="color: #D2AF52;">destacadas</span> são editáveis
-                                    </small>
                                 </div>
                             </div>
                         </form>
@@ -232,13 +215,10 @@
                                         </th>
                                         {% for field in display_fields %}
                                         {% if field.visible %}
-                                        <th class="text-center sortable-header {% if field.name == 'situacao' or field.name == 'valor' %}col-{{ field.name }}{% endif %}" 
+                                        <th class="text-center sortable-header"
                                             data-field="{{ field.name }}"
                                             style="cursor: pointer;">
                                             {{ field.label }}
-                                            {% if field.editable %}
-                                            <i class="fas fa-edit ms-1 text-warning" title="Editável"></i>
-                                            {% endif %}
                                             <span class="sort-indicators ms-1">
                                                 {% if sorting.field == field.name %}
                                                     {% if sorting.order == 'asc' %}
@@ -290,11 +270,11 @@
                                                            value="{{ precatorio[field.name] or '' }}"
                                                            onchange="markAsModified(this)">
                                                 {% elif field.type == 'numeric' %}
-                                                    <input type="text" 
-                                                           class="form-control form-control-sm editable-field" 
-                                                           value="{{ precatorio[field.name] or '' }}"
+                                                    <input type="text"
+                                                           class="form-control form-control-sm editable-field"
+                                                           value="{{ precatorio[field.name] | currency_br }}"
                                                            onchange="markAsModified(this)"
-                                                           placeholder="Ex: 1234.56">
+                                                           placeholder="R$ 1.234,56">
                                                 {% else %}
                                                     <span class="form-control-plaintext">{{ precatorio[field.name] or '' }}</span>
                                                 {% endif %}
@@ -304,6 +284,8 @@
                                                         {{ precatorio[field.name].strftime('%d/%m/%Y') }}
                                                     {% elif field.type == 'boolean' %}
                                                         {% if precatorio[field.name] %}Sim{% else %}Não{% endif %}
+                                                    {% elif field.type == 'numeric' %}
+                                                        {{ precatorio[field.name] | currency_br }}
                                                     {% else %}
                                                         {{ precatorio[field.name] or '' }}
                                                     {% endif %}
@@ -470,7 +452,52 @@
         </div>
     </div>
 
+    <!-- Rodapé -->
+    <footer class="footer mt-5">
+        <div class="footer-wave">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 100" preserveAspectRatio="none">
+                <path d="M0,50 Q300,0 600,50 T1200,50 L1200,100 L0,100 Z" fill="#D2AF52" opacity="0.3"></path>
+                <path d="M0,60 Q300,20 600,60 T1200,60 L1200,100 L0,100 Z" fill="#D2AF52" opacity="0.5"></path>
+                <path d="M0,70 Q300,40 600,70 T1200,70 L1200,100 L0,100 Z" fill="#D2AF52"></path>
+            </svg>
+        </div>
+        <div class="footer-content">
+            <div class="container">
+                <div class="row align-items-center">
+                    <div class="col-md-4 text-center text-md-start mb-3 mb-md-0">
+                        <div class="footer-logo">
+                            <i class="fas fa-balance-scale footer-icon"></i>
+                            <h5 class="footer-title mb-0">Sistema de Precatórios</h5>
+                        </div>
+                    </div>
+                    <div class="col-md-4 text-center mb-3 mb-md-0">
+                        <div class="footer-stats">
+                            <div class="stat-item">
+                                <i class="fas fa-database stat-icon"></i>
+                                <span class="stat-number">{{ pagination.total_count }}</span>
+                                <span class="stat-label">Registros</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4 text-center text-md-end">
+                        <div class="footer-info">
+                            <p class="mb-0">
+                                <i class="fas fa-clock"></i>
+                                <span id="currentYear"></span>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="footer-bottom-bar"></div>
+    </footer>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{{ url_for('static', filename='script.js') }}"></script>
+    <script>
+        // Atualizar ano atual no rodapé
+        document.getElementById('currentYear').textContent = new Date().getFullYear();
+    </script>
 </body>
 </html>

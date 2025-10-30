@@ -26,6 +26,24 @@ app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'sua_chave_secreta_aqui')
 ADMIN_TOKEN = os.environ.get('ADMIN_TOKEN', 'admin')
 
+# Filtro customizado para formatação monetária brasileira
+@app.template_filter('currency_br')
+def currency_br_filter(value):
+    """Formata número para moeda brasileira: R$ 1.234.567,89"""
+    try:
+        if value is None or value == '':
+            return 'R$ 0,00'
+        # Converter para float se for string
+        if isinstance(value, str):
+            value = float(value.replace(',', '.'))
+        # Formatar com separadores brasileiros
+        formatted = f"{float(value):,.2f}"
+        # Trocar separadores: 1,234.56 -> 1.234,56
+        formatted = formatted.replace(',', 'TEMP').replace('.', ',').replace('TEMP', '.')
+        return f"R$ {formatted}"
+    except (ValueError, TypeError):
+        return 'R$ 0,00'
+
 # Versão para debug (aparecer no rodapé)
 APP_VERSION = "v2.0-optimized-2025-10-30"
 
@@ -173,13 +191,29 @@ class DatabaseManager:
             
             # Adicionar filtros
             where_conditions = []
-            # Garantir filtro padrão para usar índices parciais
-            if not filters or str(filters.get('esta_na_ordem', '')).strip() == '':
-                where_conditions.append("esta_na_ordem = TRUE")
             params = []
-            
+
+            # Processar filtro esta_na_ordem primeiro (filtro padrão se não especificado)
+            esta_na_ordem_filter = filters.get('esta_na_ordem', 'true').strip().lower() if filters else 'true'
+
+            # Validar valor do filtro esta_na_ordem
+            if esta_na_ordem_filter in ('true', '1', 'sim', 's', 'yes', 'y'):
+                where_conditions.append("esta_na_ordem = TRUE")
+            elif esta_na_ordem_filter in ('false', '0', 'não', 'nao', 'n', 'no'):
+                where_conditions.append("esta_na_ordem = FALSE")
+            elif esta_na_ordem_filter == '' or esta_na_ordem_filter == 'todos' or esta_na_ordem_filter == 'all':
+                # Não adiciona filtro (mostrar todos)
+                pass
+            else:
+                # Valor inválido - aplicar filtro padrão
+                where_conditions.append("esta_na_ordem = TRUE")
+
             if filters:
                 for field, value in filters.items():
+                    # Pular esta_na_ordem pois já foi processado
+                    if field == 'esta_na_ordem':
+                        continue
+
                     # Permitir filtros especiais que não são colunas diretas
                     is_special_range = field in ('valor_min', 'valor_max')
                     if value and (field in fields or is_special_range):
@@ -227,8 +261,8 @@ class DatabaseManager:
                             except (ValueError, TypeError):
                                 logger.warning(f"Valor máximo inválido: {value}")
                                 continue
-                        # Para campos booleanos, converter string para boolean
-                        elif field in ['esta_na_ordem', 'nao_esta_na_ordem', 'presenca_no_pipe']:
+                        # Para campos booleanos (exceto esta_na_ordem que já foi processado), converter string para boolean
+                        elif field in ['nao_esta_na_ordem', 'presenca_no_pipe']:
                             # Converter string 'true'/'false' para boolean PostgreSQL
                             if isinstance(value, str):
                                 bool_value = value.lower() in ('true', '1', 'sim', 's', 'yes', 'y')
@@ -289,10 +323,35 @@ class DatabaseManager:
             self.cursor.execute(base_query, params)
             data = self.cursor.fetchall()
 
-            # Usar count fixo conhecido: 84,405 registros com esta_na_ordem=TRUE
-            # Evita query COUNT() lenta que causa timeouts
-            TOTAL_RECORDS_IN_DB = 84405
-            total_count = TOTAL_RECORDS_IN_DB
+            # Determinar se precisamos fazer COUNT() real
+            # Se houver filtros além do filtro padrão esta_na_ordem, fazer COUNT()
+            # Caso contrário, usar valor fixo conhecido
+            has_custom_filters = False
+            if filters:
+                # Verificar se há filtros além do esta_na_ordem padrão
+                for key, value in filters.items():
+                    if key != 'esta_na_ordem' and value:
+                        has_custom_filters = True
+                        break
+
+            if has_custom_filters:
+                # Fazer COUNT() para filtros personalizados
+                try:
+                    count_query = f"SELECT COUNT(*) FROM {TABLE_NAME}"
+                    if where_conditions:
+                        count_query += " WHERE " + " AND ".join(where_conditions)
+                    self.cursor.execute(count_query, params)
+                    count_result = self.cursor.fetchone()
+                    total_count = count_result['count'] if isinstance(count_result, dict) else count_result[0]
+                except Exception as e:
+                    logger.warning(f"Erro ao contar registros filtrados: {e}")
+                    # Fallback: estimar baseado nos resultados
+                    total_count = len(data) if page == 1 else len(data) * page
+            else:
+                # Usar count fixo conhecido: 84,405 registros com esta_na_ordem=TRUE
+                # Evita query COUNT() lenta que causa timeouts
+                TOTAL_RECORDS_IN_DB = 84405
+                total_count = TOTAL_RECORDS_IN_DB
             
             # Calcular paginação
             total_pages = (total_count + per_page - 1) // per_page
@@ -1032,7 +1091,7 @@ def index():
         # Com índice idx_precatorios_esta_ordem_valor, a query é rápida (~100-500ms)
         max_valor = get_cached_max_valor()
 
-        # Filtros de valor (valor_min e valor_max) - aplicar somente se realmente informados (> 0 no caso do máximo)
+        # Filtro de valor: "até R$" - aplicar somente se > 0
         def _normalize_currency_str(s: str):
             if not s:
                 return None
@@ -1043,22 +1102,12 @@ def index():
             except Exception:
                 return None
 
-        raw_min = request.args.get('filter_valor_min', '').strip()
-        raw_max = request.args.get('filter_valor_max', '').strip()
-        # Compat com filtro antigo
-        if not raw_max:
-            legacy_valor = request.args.get('filter_valor', '').strip()
-            if legacy_valor:
-                raw_max = legacy_valor
+        raw_valor = request.args.get('filter_valor', '').strip()
+        normalized_valor = _normalize_currency_str(raw_valor)
 
-        nmin = _normalize_currency_str(raw_min)
-        nmax = _normalize_currency_str(raw_max)
-
-        # Apenas aplica se fizer sentido: max > 0; min qualquer valor numérico informado
-        if nmin is not None:
-            filters['valor_min'] = str(nmin)
-        if nmax is not None and nmax > 0:
-            filters['valor_max'] = str(nmax)
+        # Apenas aplica filtro se valor for > 0
+        if normalized_valor is not None and normalized_valor > 0:
+            filters['valor'] = str(normalized_valor)
         
         # Filtro padrão: mostrar apenas precatórios que estão na ordem
         if 'esta_na_ordem' not in filters:
@@ -1086,17 +1135,16 @@ def index():
                 }
             }
         
-        # NÃO carregar dropdowns no carregamento inicial (muito lento - 6+ queries)
-        # Os dropdowns serão carregados via AJAX após a página carregar (ver script.js)
-        # Isso reduz o tempo de carregamento de 60s para ~2s
+        # Carregar apenas valores dos filtros que realmente precisam (com cache/otimização)
+        # Usamos get_filter_values que é otimizado com LIMIT e índices
         filter_values = {
-            'organizacao': [],
-            'prioridade': [],
-            'tribunal': [],
-            'natureza': [],
-            'situacao': [],
-            'regime': [],
-            'ano_orc': []
+            'organizacao': db_manager.get_filter_values('organizacao'),
+            'prioridade': db_manager.get_filter_values('prioridade'),
+            'tribunal': db_manager.get_filter_values('tribunal'),
+            'natureza': db_manager.get_filter_values('natureza'),
+            'situacao': db_manager.get_filter_values('situacao'),
+            'regime': db_manager.get_filter_values('regime'),
+            'ano_orc': db_manager.get_filter_values('ano_orc')
         }
         
         # max_valor já foi obtido anteriormente (não buscar novamente)

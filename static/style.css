@@ -616,6 +616,34 @@ tr.selected:hover {
     cursor: pointer;
 }
 
+/* Campo de input com datalist (campo de pesquisa) */
+input[list] {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23999' d='M10.293 3.293L6 7.586 1.707 3.293A1 1 0 00.293 4.707l5 5a1 1 0 001.414 0l5-5a1 1 0 10-1.414-1.414z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.5rem center;
+    background-size: 12px;
+    padding-right: 2rem;
+}
+
+input[list]::-webkit-calendar-picker-indicator {
+    opacity: 0;
+}
+
+input[list]:focus {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23D2AF52' d='M10.293 3.293L6 7.586 1.707 3.293A1 1 0 00.293 4.707l5 5a1 1 0 001.414 0l5-5a1 1 0 10-1.414-1.414z'/%3E%3C/svg%3E");
+}
+
+/* Texto de ajuda do campo de pesquisa */
+.form-text.text-muted {
+    font-size: 0.75rem;
+    margin-top: 0.25rem;
+}
+
+.form-text.text-muted i {
+    color: #D2AF52;
+    margin-right: 0.25rem;
+}
+
 /* Botões de filtro */
 .btn-filter {
     background: linear-gradient(135deg, #D2AF52 0%, #F5C600 100%);
@@ -650,101 +678,365 @@ tr.selected:hover {
     color: #fff;
 }
 
-/* ===== COLUNAS EDITÁVEIS DESTACADAS ===== */
+/* ===== RODAPÉ COM ANIMAÇÕES ===== */
 
-/* Coluna Situação editável - destaque mais discreto */
-.table th.col-situacao {
-    background-color: #343a40 !important;
-    border-left: 2px solid #D2AF52;
+.footer {
     position: relative;
+    background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+    color: #fff;
+    margin-top: 5rem;
+    padding-top: 0;
+    overflow: hidden;
 }
 
-.table td.col-situacao {
-    background-color: #ffffff !important;
-    border-left: 2px solid #D2AF52;
+/* Ondas animadas no topo do rodapé */
+.footer-wave {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100px;
+    overflow: hidden;
+    line-height: 0;
 }
 
-.table-striped > tbody > tr:nth-of-type(odd) > td.col-situacao {
-    background-color: rgba(248, 249, 250, 0.5) !important;
-}
-
-.table th.col-situacao::after {
-    content: " ✏️";
-    font-size: 0.7rem;
-    margin-left: 3px;
-    opacity: 0.7;
-}
-
-/* Coluna Valor editável - destaque mais discreto */
-.table th.col-valor {
-    background-color: #343a40 !important;
-    border-left: 2px solid #D2AF52;
+.footer-wave svg {
     position: relative;
+    display: block;
+    width: calc(100% + 1.3px);
+    height: 100px;
+    animation: wave-animation 10s ease-in-out infinite;
 }
 
-.table td.col-valor {
-    background-color: #ffffff !important;
-    border-left: 2px solid #D2AF52;
+@keyframes wave-animation {
+    0%, 100% {
+        transform: translateX(0);
+    }
+    50% {
+        transform: translateX(-25px);
+    }
 }
 
-.table-striped > tbody > tr:nth-of-type(odd) > td.col-valor {
-    background-color: rgba(248, 249, 250, 0.5) !important;
+/* Ondas individuais com animações diferentes */
+.footer-wave svg path:nth-child(1) {
+    animation: wave-float-1 8s ease-in-out infinite;
 }
 
-.table th.col-valor::after {
-    content: " ✏️";
-    font-size: 0.7rem;
-    margin-left: 3px;
-    opacity: 0.7;
+.footer-wave svg path:nth-child(2) {
+    animation: wave-float-2 6s ease-in-out infinite;
 }
 
-/* Hover nas colunas editáveis - mais discreto */
-.table td.col-situacao:hover,
-.table td.col-valor:hover {
-    background-color: rgba(210, 175, 82, 0.05) !important;
-    cursor: pointer;
+.footer-wave svg path:nth-child(3) {
+    animation: wave-float-3 10s ease-in-out infinite;
 }
 
-.table td.col-situacao:focus,
-.table td.col-valor:focus {
-    background-color: rgba(210, 175, 82, 0.08) !important;
+@keyframes wave-float-1 {
+    0%, 100% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(-5px);
+    }
 }
 
-/* Campos de entrada nas colunas editáveis */
-.table td.col-situacao input,
-.table td.col-valor input {
-    background-color: #ffffff;
-    border: 1px solid #ced4da;
+@keyframes wave-float-2 {
+    0%, 100% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(-8px);
+    }
 }
 
-.table td.col-situacao input:focus,
-.table td.col-valor input:focus {
-    background-color: #fff;
-    border-color: #D2AF52;
-    box-shadow: 0 0 0 0.15rem rgba(210, 175, 82, 0.2);
+@keyframes wave-float-3 {
+    0%, 100% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(-3px);
+    }
 }
 
-/* Badge indicativo de coluna editável */
-.edit-badge {
-    font-size: 0.7rem;
-    padding: 2px 6px;
-    background-color: rgba(245, 198, 0, 0.9);
-    color: #000;
+/* Conteúdo do rodapé */
+.footer-content {
+    position: relative;
+    padding: 120px 0 2rem;
+    z-index: 1;
+}
+
+/* Logo do rodapé com animação */
+.footer-logo {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    animation: fadeInLeft 1s ease-out;
+}
+
+@keyframes fadeInLeft {
+    from {
+        opacity: 0;
+        transform: translateX(-30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.footer-icon {
+    font-size: 2.5rem;
+    color: #D2AF52;
+    animation: rotate-scale 3s ease-in-out infinite;
+}
+
+@keyframes rotate-scale {
+    0%, 100% {
+        transform: rotate(0deg) scale(1);
+    }
+    50% {
+        transform: rotate(10deg) scale(1.1);
+    }
+}
+
+.footer-title {
     font-weight: 600;
-    border-radius: 0.25rem;
-    margin-left: 5px;
+    color: #fff;
+    margin: 0;
 }
 
-/* Responsividade para colunas editáveis */
-@media (max-width: 768px) {
-    .table th.col-situacao::after,
-    .table th.col-valor::after {
-        display: none;
+/* Estatísticas do rodapé */
+.footer-stats {
+    animation: fadeInUp 1s ease-out 0.2s both;
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
     }
-    
-    .edit-badge {
-        display: block;
-        margin-top: 3px;
-        margin-left: 0;
+    to {
+        opacity: 1;
+        transform: translateY(0);
     }
 }
+
+.stat-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 1rem;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 1rem;
+    backdrop-filter: blur(10px);
+    transition: all 0.3s ease;
+}
+
+.stat-item:hover {
+    background: rgba(255, 255, 255, 0.15);
+    transform: translateY(-5px);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+}
+
+.stat-icon {
+    font-size: 2rem;
+    color: #D2AF52;
+    animation: pulse-glow 2s ease-in-out infinite;
+}
+
+@keyframes pulse-glow {
+    0%, 100% {
+        opacity: 1;
+        filter: drop-shadow(0 0 5px #D2AF52);
+    }
+    50% {
+        opacity: 0.7;
+        filter: drop-shadow(0 0 15px #D2AF52);
+    }
+}
+
+.stat-number {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #fff;
+    line-height: 1;
+    animation: count-up 2s ease-out;
+}
+
+@keyframes count-up {
+    from {
+        opacity: 0;
+        transform: scale(0.5);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.stat-label {
+    font-size: 0.875rem;
+    color: rgba(255, 255, 255, 0.8);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+/* Informações do rodapé */
+.footer-info {
+    animation: fadeInRight 1s ease-out 0.4s both;
+}
+
+@keyframes fadeInRight {
+    from {
+        opacity: 0;
+        transform: translateX(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.footer-info p {
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 0.95rem;
+}
+
+.footer-info i {
+    color: #D2AF52;
+    margin-right: 0.5rem;
+}
+
+.version-badge {
+    display: inline-block;
+    background: linear-gradient(135deg, #D2AF52 0%, #F5C600 100%);
+    color: #000;
+    padding: 0.25rem 0.75rem;
+    border-radius: 1rem;
+    font-weight: 600;
+    font-size: 0.875rem;
+    margin-left: 0.5rem;
+    animation: badge-shine 3s ease-in-out infinite;
+}
+
+@keyframes badge-shine {
+    0%, 100% {
+        box-shadow: 0 0 10px rgba(210, 175, 82, 0.3);
+    }
+    50% {
+        box-shadow: 0 0 20px rgba(210, 175, 82, 0.6);
+    }
+}
+
+/* Divisor animado */
+.footer-divider {
+    border: none;
+    height: 2px;
+    background: linear-gradient(90deg,
+        transparent 0%,
+        #D2AF52 25%,
+        #F5C600 50%,
+        #D2AF52 75%,
+        transparent 100%
+    );
+    margin: 2rem 0;
+    animation: divider-glow 3s ease-in-out infinite;
+}
+
+@keyframes divider-glow {
+    0%, 100% {
+        opacity: 0.5;
+        filter: drop-shadow(0 0 5px #D2AF52);
+    }
+    50% {
+        opacity: 1;
+        filter: drop-shadow(0 0 10px #F5C600);
+    }
+}
+
+/* Copyright */
+.footer-copyright {
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 0.875rem;
+    animation: fadeIn 1s ease-out 0.6s both;
+}
+
+/* Coração pulsante */
+.heart-pulse {
+    color: #e74c3c;
+    animation: heart-beat 1.5s ease-in-out infinite;
+    display: inline-block;
+    margin: 0 0.5rem;
+}
+
+@keyframes heart-beat {
+    0%, 100% {
+        transform: scale(1);
+    }
+    10%, 30% {
+        transform: scale(1.1);
+    }
+    20%, 40% {
+        transform: scale(1);
+    }
+}
+
+/* Barra inferior decorativa */
+.footer-bottom-bar {
+    height: 5px;
+    background: linear-gradient(90deg,
+        #D2AF52 0%,
+        #F5C600 25%,
+        #D2AF52 50%,
+        #F5C600 75%,
+        #D2AF52 100%
+    );
+    background-size: 200% 100%;
+    animation: gradient-slide 3s linear infinite;
+}
+
+@keyframes gradient-slide {
+    0% {
+        background-position: 0% 0%;
+    }
+    100% {
+        background-position: 200% 0%;
+    }
+}
+
+/* Responsividade do rodapé */
+@media (max-width: 768px) {
+    .footer-logo {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .footer-icon {
+        font-size: 2rem;
+    }
+
+    .footer-title {
+        font-size: 1.1rem;
+        text-align: center;
+    }
+
+    .stat-number {
+        font-size: 1.5rem;
+    }
+
+    .footer-content {
+        padding: 100px 0 1.5rem;
+    }
+}
+
+/* Efeito de hover nos ícones */
+.footer i {
+    transition: all 0.3s ease;
+}
+
+.footer i:hover {
+    transform: scale(1.2) rotate(5deg);
+    filter: drop-shadow(0 0 10px currentColor);
+}
+
