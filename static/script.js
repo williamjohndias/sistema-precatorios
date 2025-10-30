@@ -11,10 +11,11 @@ document.addEventListener('DOMContentLoaded', function() {
     setupEventListeners();
     syncSelectionFromStorage();
     
-    // Carregar dropdowns após 1 segundo para não travar carregamento
+    // Carregar dropdowns após 500ms para não travar carregamento inicial
+    // Carrega de forma sequencial com intervalo de 300ms entre cada (ver função loadDropdownOptions)
     setTimeout(function() {
-        loadDropdownOptions(['organizacao', 'tribunal', 'natureza', 'situacao']);
-    }, 1000);
+        loadDropdownOptions(['organizacao', 'prioridade', 'tribunal', 'natureza', 'situacao', 'regime', 'ano_orc']);
+    }, 500);
 });
 
 // Inicializar tabela

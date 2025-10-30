@@ -143,9 +143,9 @@ class DatabaseManager:
     def get_precatorios_paginated(self, page: int = 1, per_page: int = 50, filters: Dict[str, str] = None, sort_field: str = 'ordem', sort_order: str = 'asc') -> Dict[str, Any]:
         """Obtém precatórios com paginação, filtros e ordenação - otimizado para Vercel"""
         try:
-            # Aumentar timeout desta consulta especificamente (sessão)
+            # Aumentar timeout para 30 segundos para queries de paginação
             try:
-                self.cursor.execute("SET statement_timeout TO 12000")
+                self.cursor.execute("SET statement_timeout TO 30000")
             except Exception:
                 pass
             # Campos específicos solicitados (ordenados conforme especificação)
@@ -333,29 +333,34 @@ class DatabaseManager:
             }
     
     def get_filter_values(self, field: str) -> List[str]:
-        """Obtém valores únicos para um campo específico para usar em filtros dropdown"""
+        """Obtém valores únicos para um campo específico - OTIMIZADO para velocidade"""
         try:
-            # Timeout de sessão para esta operação
+            # Timeout reduzido - se demorar, retorna vazio
             try:
-                self.cursor.execute("SET statement_timeout TO 12000")
+                self.cursor.execute("SET statement_timeout TO 5000")
             except Exception:
                 pass
 
-            # Amostrar dados para evitar varredura completa em tabelas grandes
-            # GROUP BY sem ORDER BY e LIMIT baixo para performance
+            # Usar índice parcial (esta_na_ordem) + DISTINCT + LIMIT
+            # Muito mais rápido que GROUP BY ou TABLESAMPLE
             query = (
-                f"SELECT {field} FROM {TABLE_NAME} TABLESAMPLE SYSTEM (1) "
+                f"SELECT DISTINCT {field} "
+                f"FROM {TABLE_NAME} "
                 f"WHERE {field} IS NOT NULL AND esta_na_ordem = TRUE "
-                f"GROUP BY {field} LIMIT 50"
+                f"LIMIT 100"
             )
             self.cursor.execute(query)
             results = self.cursor.fetchall()
-            return [str(row[field]) for row in results if row[field] is not None]
+            values = sorted([str(row[field]) for row in results if row[field] is not None])
+            return values
         except psycopg2.Error as e:
-            logger.error(f"Erro ao buscar valores únicos para {field}: {e}")
-            # Se há erro na transação, fazer rollback
+            logger.warning(f"Timeout ao buscar valores para {field}: {e}")
+            # Retornar vazio ao invés de travar
             if self.connection:
-                self.connection.rollback()
+                try:
+                    self.connection.rollback()
+                except:
+                    pass
             return []
 
     def get_all_filter_values(self, fields: List[str]) -> Dict[str, List[str]]:
@@ -975,12 +980,9 @@ def index():
             if value:
                 filters[field] = value
         
-        # Buscar valor máximo para filtros
-        try:
-            max_valor = db_manager.get_max_value('valor')
-        except Exception as e:
-            logger.warning(f"Erro ao buscar valor máximo: {e}")
-            max_valor = 1000000.0  # Valor padrão alto
+        # Usar valor máximo estático para evitar query lenta (MAX em 84k registros)
+        # Pode ser atualizado periodicamente via cache ou job assíncrono
+        max_valor = 10000000.0  # 10 milhões - valor alto suficiente
 
         # Filtros de valor (valor_min e valor_max) - aplicar somente se realmente informados (> 0 no caso do máximo)
         def _normalize_currency_str(s: str):
@@ -1036,32 +1038,18 @@ def index():
                 }
             }
         
-        # Obter valores únicos para filtros dropdown (SIMPLIFICADO: apenas essenciais)
-        # Carregar dropdowns de forma rápida e limitada para não travar
-        filter_values = {}
-        filter_fields_dropdown = ['organizacao', 'prioridade', 'tribunal', 'natureza', 'situacao', 'regime', 'ano_orc']
-        
-        # Inicializar todos com vazio primeiro
-        for field in filter_fields_dropdown:
-            filter_values[field] = []
-
-        # Carregar todos os dropdowns necessários para filtros funcionarem
-        try:
-            # Carregar campos principais para dropdowns
-            for field in ['organizacao', 'prioridade', 'tribunal', 'natureza', 'situacao', 'regime']:
-                try:
-                    filter_values[field] = db_manager.get_filter_values(field)
-                except Exception as e:
-                    logger.warning(f"Erro ao carregar filtro {field}: {e}")
-                    filter_values[field] = []
-
-            # ano_orc separado pois pode ter muitos valores
-            try:
-                filter_values['ano_orc'] = db_manager.get_filter_values('ano_orc')
-            except:
-                filter_values['ano_orc'] = []
-        except Exception as e:
-            logger.error(f"Erro ao carregar filtros: {e}")
+        # NÃO carregar dropdowns no carregamento inicial (muito lento - 6+ queries)
+        # Os dropdowns serão carregados via AJAX após a página carregar (ver script.js)
+        # Isso reduz o tempo de carregamento de 60s para ~2s
+        filter_values = {
+            'organizacao': [],
+            'prioridade': [],
+            'tribunal': [],
+            'natureza': [],
+            'situacao': [],
+            'regime': [],
+            'ano_orc': []
+        }
         
         # max_valor já foi obtido anteriormente (não buscar novamente)
         
