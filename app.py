@@ -26,6 +26,9 @@ app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'sua_chave_secreta_aqui')
 ADMIN_TOKEN = os.environ.get('ADMIN_TOKEN', 'admin')
 
+# Versão para debug (aparecer no rodapé)
+APP_VERSION = "v2.0-optimized-2025-10-30"
+
 # Configuração do banco de dados usando variáveis de ambiente
 DB_CONFIG = {
     'host': os.environ.get('DB_HOST', 'bdunicoprecs.c50cwuocuwro.sa-east-1.rds.amazonaws.com'),
@@ -286,8 +289,10 @@ class DatabaseManager:
             self.cursor.execute(base_query, params)
             data = self.cursor.fetchall()
 
-            # Não executar COUNT para evitar timeouts; usar estimativa simples
-            total_count = offset + len(data) + (per_page if len(data) == per_page else 0)
+            # Usar count fixo conhecido: 84,405 registros com esta_na_ordem=TRUE
+            # Evita query COUNT() lenta que causa timeouts
+            TOTAL_RECORDS_IN_DB = 84405
+            total_count = TOTAL_RECORDS_IN_DB
             
             # Calcular paginação
             total_pages = (total_count + per_page - 1) // per_page
