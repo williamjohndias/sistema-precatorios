@@ -143,9 +143,9 @@ class DatabaseManager:
     def get_precatorios_paginated(self, page: int = 1, per_page: int = 50, filters: Dict[str, str] = None, sort_field: str = 'ordem', sort_order: str = 'asc') -> Dict[str, Any]:
         """Obtém precatórios com paginação, filtros e ordenação - otimizado para Vercel"""
         try:
-            # Aumentar timeout para 30 segundos para queries de paginação
+            # Aumentar timeout para 60 segundos para queries grandes
             try:
-                self.cursor.execute("SET statement_timeout TO 30000")
+                self.cursor.execute("SET statement_timeout TO 60000")
             except Exception:
                 pass
             # Campos específicos solicitados (ordenados conforme especificação)
@@ -998,14 +998,17 @@ def index():
             page = 1
             
         try:
-            # Default: TODOS os registros (84,405) em uma única página
-            # Usuário pode especificar ?per_page=X para limitar se quiser
-            per_page = int(request.args.get('per_page', 100000))
+            # Default: 10.000 registros por página (84k total = ~8-9 páginas)
+            # Carregar todos 84k de uma vez causa timeout (>60s) e trava navegador
+            # Com índices: 10k registros = ~0.5-1s (performance excelente)
+            per_page = int(request.args.get('per_page', 10000))
             if per_page < 1:
-                per_page = 100000
-            # Sem limite máximo - mostrar todos os dados de uma vez
+                per_page = 10000
+            # Limite máximo de 20k para evitar timeouts
+            if per_page > 20000:
+                per_page = 20000
         except (ValueError, TypeError):
-            per_page = 100000
+            per_page = 10000
         
         # Parâmetros de ordenação (padrão: ordenar pela coluna 'ordem')
         sort_field = request.args.get('sort', 'ordem')
