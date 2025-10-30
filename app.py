@@ -864,6 +864,43 @@ db_manager = DatabaseManager()
 original_data = {}
 modified_data = {}
 
+# Cache para valor máximo (atualizado a cada 5 minutos)
+_cached_max_valor = None
+_cache_timestamp = None
+
+def get_cached_max_valor() -> float:
+    """Retorna valor máximo com cache de 5 minutos para performance"""
+    global _cached_max_valor, _cache_timestamp
+    from datetime import datetime, timedelta
+
+    now = datetime.now()
+    cache_valid = (
+        _cached_max_valor is not None and
+        _cache_timestamp is not None and
+        (now - _cache_timestamp) < timedelta(minutes=5)
+    )
+
+    if cache_valid:
+        logger.info(f"Usando valor maximo em cache: {_cached_max_valor}")
+        return _cached_max_valor
+
+    # Cache expirado ou vazio - buscar do banco
+    try:
+        if db_manager.connect():
+            # Com o índice idx_precatorios_esta_ordem_valor, esta query é RÁPIDA
+            valor = db_manager.get_max_value('valor')
+            if valor and valor > 0:
+                _cached_max_valor = valor
+                _cache_timestamp = now
+                logger.info(f"Valor maximo atualizado no cache: {valor}")
+                return valor
+            db_manager.disconnect()
+    except Exception as e:
+        logger.warning(f"Erro ao buscar valor maximo, usando cache antigo ou padrao: {e}")
+
+    # Fallback: retornar cache antigo ou valor padrão alto
+    return _cached_max_valor if _cached_max_valor else 10000000.0
+
 # ===== Normalização/Validação de tipos =====
 def normalize_field_value(field_name: str, value: Any) -> Any:
     """Normaliza valores de campos para padrões consistentes.
@@ -980,9 +1017,9 @@ def index():
             if value:
                 filters[field] = value
         
-        # Usar valor máximo estático para evitar query lenta (MAX em 84k registros)
-        # Pode ser atualizado periodicamente via cache ou job assíncrono
-        max_valor = 10000000.0  # 10 milhões - valor alto suficiente
+        # Buscar valor máximo com cache (atualizado a cada 5 minutos)
+        # Com índice idx_precatorios_esta_ordem_valor, a query é rápida (~100-500ms)
+        max_valor = get_cached_max_valor()
 
         # Filtros de valor (valor_min e valor_max) - aplicar somente se realmente informados (> 0 no caso do máximo)
         def _normalize_currency_str(s: str):
