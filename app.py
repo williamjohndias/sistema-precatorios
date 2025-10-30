@@ -998,11 +998,14 @@ def index():
             page = 1
             
         try:
-            per_page = int(request.args.get('per_page', 1000))
-            if per_page < 1 or per_page > 2000:
-                per_page = 1000
+            per_page = int(request.args.get('per_page', 5000))
+            # Permitir até 100k registros por página (banco tem 84k no total)
+            # Com índices otimizados, queries até 10k registros são rápidas (~1-2s)
+            if per_page < 1:
+                per_page = 5000
+            # Sem limite máximo - usuário pode ver todos os dados
         except (ValueError, TypeError):
-            per_page = 1000
+            per_page = 5000
         
         # Parâmetros de ordenação (padrão: ordenar pela coluna 'ordem')
         sort_field = request.args.get('sort', 'ordem')
