@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 # Configuração do Flask otimizada para Vercel
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'sua_chave_secreta_aqui')
+ADMIN_TOKEN = os.environ.get('ADMIN_TOKEN', 'admin')
 
 # Configuração do banco de dados usando variáveis de ambiente
 DB_CONFIG = {
@@ -58,16 +59,23 @@ class DatabaseManager:
             # Configurações otimizadas para Vercel
             conn_params = DB_CONFIG.copy()
             conn_params.update({
-                'connect_timeout': 5,  # Timeout de conexão reduzido ainda mais
+                'connect_timeout': 15,  # Timeout aumentado para conexão mais estável
                 'application_name': 'precatorios_vercel',
-                'keepalives_idle': 300,  # Reduzido para evitar timeouts
-                'keepalives_interval': 10,  # Mais frequente
-                'keepalives_count': 2  # Menos tentativas
+                'keepalives_idle': 600,  # Aumentado para manter conexão
+                'keepalives_interval': 30,  # Intervalo razoável
+                'keepalives_count': 5,  # Mais tentativas antes de desistir
+                # Impõe timeouts de consulta para evitar 504 no Vercel
+                'options': '-c statement_timeout=25000 -c idle_in_transaction_session_timeout=25000 -c lock_timeout=5000'
             })
             
             logger.info(f"Tentando conectar ao banco: {conn_params['host']}:{conn_params['port']}")
             self.connection = psycopg2.connect(**conn_params, cursor_factory=RealDictCursor)
             self.cursor = self.connection.cursor()
+            # Evitar manter transações abertas e facilitar rollback automático após erros
+            try:
+                self.connection.autocommit = True
+            except Exception:
+                pass
             logger.info("Conexão com banco estabelecida")
             return True
         except psycopg2.OperationalError as e:
@@ -82,6 +90,44 @@ class DatabaseManager:
             logger.error(f"Erro inesperado na conexão: {e}")
             logger.error(f"Configuração usada: host={conn_params.get('host')}, port={conn_params.get('port')}, user={conn_params.get('user')}, database={conn_params.get('database')}")
             return False
+
+    def apply_optimization_indexes(self) -> Dict[str, Any]:
+        """Cria índices recomendados e executa ANALYZE (idempotente)."""
+        try:
+            if not self.connection or self.connection.closed:
+                if not self.connect():
+                    return {'success': False, 'message': 'Falha ao conectar'}
+
+            statements = [
+                # Lista principal (filtro + ordenação)
+                "CREATE INDEX IF NOT EXISTS idx_precatorios_esta_ordem_ordem  ON precatorios(esta_na_ordem, ordem)",
+                # Filtro por valor com filtro padrão
+                "CREATE INDEX IF NOT EXISTS idx_precatorios_esta_ordem_valor  ON precatorios(esta_na_ordem, valor)",
+                # Dropdowns
+                "CREATE INDEX IF NOT EXISTS idx_precatorios_esta_ordem_prioridade ON precatorios(esta_na_ordem, prioridade)",
+                "CREATE INDEX IF NOT EXISTS idx_precatorios_esta_ordem_regime     ON precatorios(esta_na_ordem, regime)",
+                "CREATE INDEX IF NOT EXISTS idx_precatorios_esta_ordem_tribunal   ON precatorios(esta_na_ordem, tribunal)",
+                "CREATE INDEX IF NOT EXISTS idx_precatorios_esta_ordem_natureza   ON precatorios(esta_na_ordem, natureza)",
+                # Atualizar estatísticas
+                "ANALYZE precatorios"
+            ]
+
+            created = []
+            for sql in statements:
+                try:
+                    self.cursor.execute(sql)
+                    created.append(sql.split(' IF NOT EXISTS ')[-1].split(' ON ')[0] if 'CREATE INDEX' in sql else sql)
+                except psycopg2.Error as e:
+                    logger.warning(f"Falha ao executar: {sql} -> {e}")
+                    # Continuar mesmo com falhas pontuais
+                    try:
+                        self.connection.rollback()
+                    except Exception:
+                        pass
+            return {'success': True, 'created': created}
+        except Exception as e:
+            logger.error(f"Erro ao aplicar índices: {e}")
+            return {'success': False, 'message': str(e)}
     
     def disconnect(self):
         """Desconecta do banco de dados"""
@@ -97,33 +143,43 @@ class DatabaseManager:
     def get_precatorios_paginated(self, page: int = 1, per_page: int = 50, filters: Dict[str, str] = None, sort_field: str = 'ordem', sort_order: str = 'asc') -> Dict[str, Any]:
         """Obtém precatórios com paginação, filtros e ordenação - otimizado para Vercel"""
         try:
+            # Aumentar timeout desta consulta especificamente (sessão)
+            try:
+                self.cursor.execute("SET statement_timeout TO 12000")
+            except Exception:
+                pass
             # Campos específicos solicitados (ordenados conforme especificação)
             # Incluindo todos os campos do banco que são necessários
             fields = [
                 'id', 'precatorio', 'ordem', 'organizacao', 'prioridade', 'tribunal', 
-                'natureza', 'data_base', 'originario', 'situacao', 'esta_na_ordem', 
+                'natureza', 'data_base', 'situacao', 'esta_na_ordem', 
                 'nao_esta_na_ordem', 'ano_orc', 'valor', 'presenca_no_pipe', 'regime'
             ]
 
-            # Validar campo de ordenação
-            if sort_field not in fields:
+            # Validar campo de ordenação: permitir apenas colunas seguras/indexadas
+            safe_sort_fields = {'ordem', 'ano_orc', 'valor'}
+            if sort_field not in safe_sort_fields:
                 sort_field = 'ordem'
-            
             if sort_order.upper() not in ['ASC', 'DESC']:
                 sort_order = 'ASC'
             
             # Construir query base
             base_query = f"SELECT {', '.join(fields)} FROM {TABLE_NAME}"
-            # Otimizar COUNT: usar índice quando possível
-            count_query = f"SELECT COUNT(*) FROM {TABLE_NAME}"
+            # Contagem pode ser custosa; evitamos COUNT para não estourar timeout
+            count_query = None
             
             # Adicionar filtros
             where_conditions = []
+            # Garantir filtro padrão para usar índices parciais
+            if not filters or str(filters.get('esta_na_ordem', '')).strip() == '':
+                where_conditions.append("esta_na_ordem = TRUE")
             params = []
             
             if filters:
                 for field, value in filters.items():
-                    if value and field in fields:
+                    # Permitir filtros especiais que não são colunas diretas
+                    is_special_range = field in ('valor_min', 'valor_max')
+                    if value and (field in fields or is_special_range):
                         # Para valor, usar comparação <= (menor ou igual) e converter para float
                         if field == 'valor':
                             try:
@@ -215,24 +271,23 @@ class DatabaseManager:
             if where_conditions:
                 where_clause = " WHERE " + " AND ".join(where_conditions)
                 base_query += where_clause
-                count_query += where_clause
+                if count_query is not None:
+                    count_query += where_clause
             
-            # Adicionar ordenação
-            # Como 'ordem' já é integer no banco, ordenamos diretamente
-            base_query += f" ORDER BY {sort_field} {sort_order.upper()}"
+            # Adicionar ordenação apenas se campo for seguro
+            if sort_field in safe_sort_fields:
+                base_query += f" ORDER BY {sort_field} {sort_order.upper()}"
             
             # Adicionar paginação
             offset = (page - 1) * per_page
             base_query += f" LIMIT {per_page} OFFSET {offset}"
             
-            # Executar contagem
-            self.cursor.execute(count_query, params)
-            count_result = self.cursor.fetchone()
-            total_count = count_result['count'] if isinstance(count_result, dict) else count_result[0]
-            
-            # Executar query principal
+            # Executar query principal primeiro (para evitar timeouts em COUNT)
             self.cursor.execute(base_query, params)
             data = self.cursor.fetchall()
+
+            # Não executar COUNT para evitar timeouts; usar estimativa simples
+            total_count = offset + len(data) + (per_page if len(data) == per_page else 0)
             
             # Calcular paginação
             total_pages = (total_count + per_page - 1) // per_page
@@ -256,6 +311,12 @@ class DatabaseManager:
             
         except psycopg2.Error as e:
             logger.error(f"Erro ao buscar precatórios: {e}")
+            # Garantir que a sessão não fique em estado aborted
+            try:
+                if self.connection:
+                    self.connection.rollback()
+            except Exception:
+                pass
             return {
                 'data': [], 
                 'pagination': {
@@ -274,9 +335,19 @@ class DatabaseManager:
     def get_filter_values(self, field: str) -> List[str]:
         """Obtém valores únicos para um campo específico para usar em filtros dropdown"""
         try:
-            # Aplicar filtro esta_na_ordem = true para melhorar performance
-            # Usar índice quando possível
-            query = f"SELECT DISTINCT {field} FROM {TABLE_NAME} WHERE {field} IS NOT NULL AND esta_na_ordem = TRUE ORDER BY {field} LIMIT 500"
+            # Timeout de sessão para esta operação
+            try:
+                self.cursor.execute("SET statement_timeout TO 12000")
+            except Exception:
+                pass
+
+            # Amostrar dados para evitar varredura completa em tabelas grandes
+            # GROUP BY sem ORDER BY e LIMIT baixo para performance
+            query = (
+                f"SELECT {field} FROM {TABLE_NAME} TABLESAMPLE SYSTEM (1) "
+                f"WHERE {field} IS NOT NULL AND esta_na_ordem = TRUE "
+                f"GROUP BY {field} LIMIT 50"
+            )
             self.cursor.execute(query)
             results = self.cursor.fetchall()
             return [str(row[field]) for row in results if row[field] is not None]
@@ -286,7 +357,7 @@ class DatabaseManager:
             if self.connection:
                 self.connection.rollback()
             return []
-    
+
     def get_all_filter_values(self, fields: List[str]) -> Dict[str, List[str]]:
         """Obtém valores únicos para múltiplos campos otimizado"""
         try:
@@ -339,19 +410,66 @@ class DatabaseManager:
             if self.connection:
                 self.connection.rollback()
             return {}
-    
-    def get_max_value(self, field: str) -> float:
-        """Obtém o valor máximo de um campo numérico (otimizado com filtro)"""
+
+    def get_quick_stats(self) -> Dict[str, Any]:
+        """Métricas rápidas para validar comunicação e dados no banco."""
         try:
-            # Usar filtro esta_na_ordem para melhorar performance
-            query = f"SELECT MAX({field}) as max_valor FROM {TABLE_NAME} WHERE {field} IS NOT NULL AND esta_na_ordem = TRUE"
+            if not self.connection or self.connection.closed:
+                if not self.connect():
+                    return {'ok': False, 'message': 'Falha ao conectar'}
+
+            stats = {}
+            # Total de linhas
+            self.cursor.execute(f"SELECT COUNT(*) AS c FROM {TABLE_NAME}")
+            stats['total'] = int(self.cursor.fetchone()['c'])
+
+            # Apenas na ordem
+            self.cursor.execute(f"SELECT COUNT(*) AS c FROM {TABLE_NAME} WHERE esta_na_ordem = TRUE")
+            stats['total_na_ordem'] = int(self.cursor.fetchone()['c'])
+
+            # Min/Max de valor considerando apenas registros válidos e na ordem
+            self.cursor.execute(
+                f"SELECT MIN(valor) AS min_valor, MAX(valor) AS max_valor FROM {TABLE_NAME} WHERE valor IS NOT NULL AND esta_na_ordem = TRUE"
+            )
+            row = self.cursor.fetchone()
+            stats['min_valor'] = float(row['min_valor']) if row and row['min_valor'] is not None else None
+            stats['max_valor'] = float(row['max_valor']) if row and row['max_valor'] is not None else None
+
+            # Amostra de 5 registros (id, ordem, valor) na ordem
+            self.cursor.execute(
+                f"SELECT id, ordem, valor FROM {TABLE_NAME} WHERE esta_na_ordem = TRUE ORDER BY ordem LIMIT 5"
+            )
+            stats['sample'] = [dict(r) for r in self.cursor.fetchall()]
+
+            return {'ok': True, 'stats': stats}
+        except Exception as e:
+            logger.error(f"Erro em quick stats: {e}")
+            try:
+                if self.connection:
+                    self.connection.rollback()
+            except Exception:
+                pass
+            return {'ok': False, 'message': str(e)}
+
+    def get_max_value(self, field: str) -> float:
+        """Obtém rapidamente o maior valor usando índice (ORDER BY DESC LIMIT 1)."""
+        try:
+            # Estratégia mais rápida que agregação MAX() em tabelas grandes
+            query = f"""
+                SELECT {field} AS max_valor
+                FROM {TABLE_NAME}
+                WHERE {field} IS NOT NULL AND esta_na_ordem = TRUE
+                ORDER BY {field} DESC
+                LIMIT 1
+            """
             self.cursor.execute(query)
             result = self.cursor.fetchone()
-            return float(result['max_valor']) if result and result['max_valor'] else 0.0
+            return float(result['max_valor']) if result and result['max_valor'] is not None else 0.0
         except psycopg2.Error as e:
             logger.error(f"Erro ao buscar valor máximo para {field}: {e}")
             if self.connection:
                 self.connection.rollback()
+            # Fallback seguro para não travar a página
             return 0.0
 
     def get_log_filter_values(self, field: str) -> List[str]:
@@ -857,32 +975,44 @@ def index():
             if value:
                 filters[field] = value
         
-        # Filtros de valor (valor_min e valor_max)
-        valor_min = request.args.get('filter_valor_min', '').strip()
-        valor_max = request.args.get('filter_valor_max', '').strip()
-        
-        # Se valor_max estiver vazio mas tiver valor antigo (compatibilidade)
-        if not valor_max and 'valor' not in filter_fields:
-            valor_max = request.args.get('filter_valor', '').strip()
-        
-        if valor_min or valor_max:
-            filters['valor_min'] = valor_min if valor_min else '0.00'
-            filters['valor_max'] = valor_max if valor_max else str(max_valor or 1000000.0)
-        
-        # Filtro padrão: mostrar apenas precatórios que estão na ordem
-        if 'esta_na_ordem' not in filters:
-            filters['esta_na_ordem'] = 'true'
-        
-        # Obter valor máximo para o range slider de valor (precisa vir antes dos filtros)
+        # Buscar valor máximo para filtros
         try:
             max_valor = db_manager.get_max_value('valor')
         except Exception as e:
             logger.warning(f"Erro ao buscar valor máximo: {e}")
-            max_valor = 1000000.0  # Valor padrão
+            max_valor = 1000000.0  # Valor padrão alto
+
+        # Filtros de valor (valor_min e valor_max) - aplicar somente se realmente informados (> 0 no caso do máximo)
+        def _normalize_currency_str(s: str):
+            if not s:
+                return None
+            try:
+                s = s.replace('R$', '').replace(' ', '').replace('.', '').replace(',', '.')
+                s = re.sub(r"[^0-9.]", "", s)
+                return float(s) if s else None
+            except Exception:
+                return None
+
+        raw_min = request.args.get('filter_valor_min', '').strip()
+        raw_max = request.args.get('filter_valor_max', '').strip()
+        # Compat com filtro antigo
+        if not raw_max:
+            legacy_valor = request.args.get('filter_valor', '').strip()
+            if legacy_valor:
+                raw_max = legacy_valor
+
+        nmin = _normalize_currency_str(raw_min)
+        nmax = _normalize_currency_str(raw_max)
+
+        # Apenas aplica se fizer sentido: max > 0; min qualquer valor numérico informado
+        if nmin is not None:
+            filters['valor_min'] = str(nmin)
+        if nmax is not None and nmax > 0:
+            filters['valor_max'] = str(nmax)
         
-        # Ajustar filtro de valor_max se não tiver valor definido
-        if 'valor_max' in filters and not filters['valor_max']:
-            filters['valor_max'] = str(max_valor)
+        # Filtro padrão: mostrar apenas precatórios que estão na ordem
+        if 'esta_na_ordem' not in filters:
+            filters['esta_na_ordem'] = 'true'
         
         # Obter dados paginados com ordenação (PRIORIDADE: carregar isso primeiro)
         try:
@@ -914,17 +1044,24 @@ def index():
         # Inicializar todos com vazio primeiro
         for field in filter_fields_dropdown:
             filter_values[field] = []
-        
-        # Tentar carregar os principais dropdowns
+
+        # Carregar todos os dropdowns necessários para filtros funcionarem
         try:
-            # Carregar campos principais de forma rápida
-            for field in ['organizacao', 'prioridade', 'tribunal', 'regime']:
+            # Carregar campos principais para dropdowns
+            for field in ['organizacao', 'prioridade', 'tribunal', 'natureza', 'situacao', 'regime']:
                 try:
                     filter_values[field] = db_manager.get_filter_values(field)
-                except:
-                    pass
-        except:
-            pass  # Se falhar, continua com arrays vazios
+                except Exception as e:
+                    logger.warning(f"Erro ao carregar filtro {field}: {e}")
+                    filter_values[field] = []
+
+            # ano_orc separado pois pode ter muitos valores
+            try:
+                filter_values['ano_orc'] = db_manager.get_filter_values('ano_orc')
+            except:
+                filter_values['ano_orc'] = []
+        except Exception as e:
+            logger.error(f"Erro ao carregar filtros: {e}")
         
         # max_valor já foi obtido anteriormente (não buscar novamente)
         
@@ -959,6 +1096,10 @@ def index():
             'order': sort_order
         }
         
+        # Se não temos um máximo válido, não exibir no rótulo
+        if max_valor == 0.0:
+            max_valor = None
+
         return render_template('index.html',
                              precatorios=result['data'],
                              pagination=result['pagination'],
@@ -1316,12 +1457,66 @@ def debug_table_structure():
             'columns': list(structure.keys()),
             'current_fields_in_code': [
                 'id', 'precatorio', 'ordem', 'organizacao', 'prioridade', 'tribunal', 
-                'natureza', 'data_base', 'originario', 'situacao', 'esta_na_ordem', 
+                'natureza', 'data_base', 'situacao', 'esta_na_ordem', 
                 'nao_esta_na_ordem', 'ano_orc', 'valor', 'presenca_no_pipe', 'regime'
             ]
         })
     except Exception as e:
         logger.error(f"Erro ao obter estrutura: {e}")
+        return jsonify({'success': False, 'message': str(e)})
+    finally:
+        db_manager.disconnect()
+
+@app.route('/api/debug/quick', methods=['GET'])
+def debug_quick():
+    """Endpoint de verificação rápida: total de linhas, min/max de valor e amostra."""
+    try:
+        if not db_manager.connect():
+            return jsonify({'ok': False, 'message': 'Erro ao conectar com banco'}), 500
+        result = db_manager.get_quick_stats()
+        status = 200 if result.get('ok') else 500
+        return jsonify(result), status
+    except Exception as e:
+        return jsonify({'ok': False, 'message': str(e)}), 500
+    finally:
+        db_manager.disconnect()
+
+@app.route('/admin/apply_indexes', methods=['POST', 'GET'])
+def admin_apply_indexes():
+    """Aplica índices recomendados. Protegido por token simples via ENV ADMIN_TOKEN."""
+    token = request.args.get('token') or request.headers.get('X-Admin-Token')
+    if token != ADMIN_TOKEN:
+        return jsonify({'success': False, 'message': 'Não autorizado'}), 401
+
+    try:
+        if not db_manager.connect():
+            return jsonify({'success': False, 'message': 'Erro ao conectar com banco'}), 500
+        result = db_manager.apply_optimization_indexes()
+        return jsonify(result), (200 if result.get('success') else 500)
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        db_manager.disconnect()
+
+@app.route('/api/get_filter_options', methods=['GET'])
+def get_filter_options():
+    """API para carregar opções de filtro sob demanda (AJAX)"""
+    try:
+        if not db_manager.connect():
+            return jsonify({'success': False, 'message': 'Erro ao conectar com banco'})
+        
+        field = request.args.get('field', '')
+        if field not in ['organizacao', 'prioridade', 'tribunal', 'natureza', 'situacao', 'regime', 'ano_orc']:
+            return jsonify({'success': False, 'message': 'Campo inválido'})
+        
+        values = db_manager.get_filter_values(field)
+        return jsonify({
+            'success': True,
+            'field': field,
+            'values': values
+        })
+    except Exception as e:
+        logger.error(f"Erro ao obter opções de filtro: {e}")
         return jsonify({'success': False, 'message': str(e)})
     finally:
         db_manager.disconnect()
