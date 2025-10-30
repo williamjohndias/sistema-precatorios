@@ -64,8 +64,8 @@ class DatabaseManager:
                 'keepalives_idle': 600,  # Aumentado para manter conexão
                 'keepalives_interval': 30,  # Intervalo razoável
                 'keepalives_count': 5,  # Mais tentativas antes de desistir
-                # Timeouts aumentados para carregar TODOS os registros
-                'options': '-c statement_timeout=120000 -c idle_in_transaction_session_timeout=120000 -c lock_timeout=10000'
+                # Timeouts otimizados para queries com paginação e índices
+                'options': '-c statement_timeout=30000 -c idle_in_transaction_session_timeout=30000 -c lock_timeout=5000'
             })
             
             logger.info(f"Tentando conectar ao banco: {conn_params['host']}:{conn_params['port']}")
@@ -143,9 +143,9 @@ class DatabaseManager:
     def get_precatorios_paginated(self, page: int = 1, per_page: int = 50, filters: Dict[str, str] = None, sort_field: str = 'ordem', sort_order: str = 'asc') -> Dict[str, Any]:
         """Obtém precatórios com paginação, filtros e ordenação - otimizado para Vercel"""
         try:
-            # Aumentar timeout para 120 segundos para carregar TODOS os registros
+            # Timeout de 30 segundos é suficiente com paginação e índices
             try:
-                self.cursor.execute("SET statement_timeout TO 120000")
+                self.cursor.execute("SET statement_timeout TO 30000")
             except Exception:
                 pass
             # Campos específicos solicitados (ordenados conforme especificação)
@@ -998,15 +998,17 @@ def index():
             page = 1
             
         try:
-            # Default: 100.000 registros (todos os dados do banco - 84,405)
-            # AVISO: Pode demorar 30-60s para carregar tudo
-            # Navegador pode ficar lento com 84k linhas HTML
-            per_page = int(request.args.get('per_page', 100000))
+            # Paginação: 1000 registros por página (boa performance)
+            # 84,405 registros total = ~85 páginas
+            # Com índices: 1000 registros carrega em ~0.05s
+            per_page = int(request.args.get('per_page', 1000))
             if per_page < 1:
-                per_page = 100000
-            # SEM LIMITE MÁXIMO - usuário pediu todos os dados
+                per_page = 1000
+            # Limite máximo de 5000 por página para manter boa performance
+            if per_page > 5000:
+                per_page = 5000
         except (ValueError, TypeError):
-            per_page = 100000
+            per_page = 1000
         
         # Parâmetros de ordenação (padrão: ordenar pela coluna 'ordem')
         sort_field = request.args.get('sort', 'ordem')
