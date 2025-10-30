@@ -10,6 +10,11 @@ document.addEventListener('DOMContentLoaded', function() {
     setupSearch();
     setupEventListeners();
     syncSelectionFromStorage();
+    
+    // Carregar dropdowns após 1 segundo para não travar carregamento
+    setTimeout(function() {
+        loadDropdownOptions(['organizacao', 'tribunal', 'natureza', 'situacao']);
+    }, 1000);
 });
 
 // Inicializar tabela
@@ -642,3 +647,38 @@ window.addEventListener('beforeunload', function(e) {
         e.returnValue = 'Há alterações não salvas. Deseja realmente sair?';
     }
 });
+
+// Função para carregar opções de dropdown via AJAX (sequencial para evitar sobrecarga)
+function loadDropdownOptions(fields) {
+    const queue = Array.from(fields);
+    const loadNext = () => {
+        const field = queue.shift();
+        if (!field) return;
+        fetch(`/api/get_filter_options?field=${field}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const select = document.querySelector(`select[name="filter_${field}"]`);
+                    if (select) {
+                        const firstOption = select.firstElementChild;
+                        select.innerHTML = '';
+                        if (firstOption) select.appendChild(firstOption);
+                        data.values.forEach(value => {
+                            const option = document.createElement('option');
+                            option.value = value;
+                            option.textContent = value;
+                            select.appendChild(option);
+                        });
+                    }
+                }
+            })
+            .catch(error => {
+                console.error(`Erro ao carregar opções para ${field}:`, error);
+            })
+            .finally(() => {
+                // Intervalo pequeno entre requisições para aliviar o banco
+                setTimeout(loadNext, 300);
+            });
+    };
+    loadNext();
+}
