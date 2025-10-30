@@ -64,8 +64,8 @@ class DatabaseManager:
                 'keepalives_idle': 600,  # Aumentado para manter conexão
                 'keepalives_interval': 30,  # Intervalo razoável
                 'keepalives_count': 5,  # Mais tentativas antes de desistir
-                # Impõe timeouts de consulta para evitar 504 no Vercel
-                'options': '-c statement_timeout=25000 -c idle_in_transaction_session_timeout=25000 -c lock_timeout=5000'
+                # Timeouts aumentados para carregar TODOS os registros
+                'options': '-c statement_timeout=120000 -c idle_in_transaction_session_timeout=120000 -c lock_timeout=10000'
             })
             
             logger.info(f"Tentando conectar ao banco: {conn_params['host']}:{conn_params['port']}")
@@ -143,9 +143,9 @@ class DatabaseManager:
     def get_precatorios_paginated(self, page: int = 1, per_page: int = 50, filters: Dict[str, str] = None, sort_field: str = 'ordem', sort_order: str = 'asc') -> Dict[str, Any]:
         """Obtém precatórios com paginação, filtros e ordenação - otimizado para Vercel"""
         try:
-            # Aumentar timeout para 60 segundos para queries grandes
+            # Aumentar timeout para 120 segundos para carregar TODOS os registros
             try:
-                self.cursor.execute("SET statement_timeout TO 60000")
+                self.cursor.execute("SET statement_timeout TO 120000")
             except Exception:
                 pass
             # Campos específicos solicitados (ordenados conforme especificação)
@@ -998,17 +998,15 @@ def index():
             page = 1
             
         try:
-            # Default: 10.000 registros por página (84k total = ~8-9 páginas)
-            # Carregar todos 84k de uma vez causa timeout (>60s) e trava navegador
-            # Com índices: 10k registros = ~0.5-1s (performance excelente)
-            per_page = int(request.args.get('per_page', 10000))
+            # Default: 100.000 registros (todos os dados do banco - 84,405)
+            # AVISO: Pode demorar 30-60s para carregar tudo
+            # Navegador pode ficar lento com 84k linhas HTML
+            per_page = int(request.args.get('per_page', 100000))
             if per_page < 1:
-                per_page = 10000
-            # Limite máximo de 20k para evitar timeouts
-            if per_page > 20000:
-                per_page = 20000
+                per_page = 100000
+            # SEM LIMITE MÁXIMO - usuário pediu todos os dados
         except (ValueError, TypeError):
-            per_page = 10000
+            per_page = 100000
         
         # Parâmetros de ordenação (padrão: ordenar pela coluna 'ordem')
         sort_field = request.args.get('sort', 'ordem')
