@@ -169,12 +169,12 @@
                                     <label class="form-label">Valor até R$ (máx: {{ max_valor | currency_br }})</label>
                                     <input type="number" class="form-control form-control-sm"
                                            name="filter_valor"
-                                           value="{{ filters.get('valor', '0') }}"
+                                           value="{{ filters.get('valor', '') }}"
                                            placeholder="Filtrar até este valor"
                                            min="0"
                                            max="{{ max_valor or 0 }}"
                                            step="0.01">
-                                    <small class="form-text text-muted">Deixe 0 para não filtrar por valor</small>
+                                    <small class="form-text text-muted">Digite um valor maior que 0 para filtrar</small>
                                 </div>
                                 <div class="col-md-3 mb-2">
                                     <label class="form-label">No Pipe</label>

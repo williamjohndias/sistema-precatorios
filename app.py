@@ -220,21 +220,33 @@ class DatabaseManager:
                         # Para valor, usar comparação <= (menor ou igual) e converter para float
                         if field == 'valor':
                             try:
-                                # Converter valor para float se vier como string
+                                # Converter valor para float
+                                # O valor já vem normalizado da rota principal, mas pode ser string numérica
                                 if isinstance(value, str):
-                                    # Normalizar string removendo R$, espaços, e convertendo vírgula para ponto
-                                    normalized_val = value.replace('R$', '').replace(' ', '').replace(',', '.')
-                                    normalized_val = re.sub(r"[^0-9.]", "", normalized_val)
-                                    if normalized_val:
-                                        valor_float = float(normalized_val)
-                                        where_conditions.append(f"{field} <= %s")
-                                        params.append(valor_float)
+                                    # Se já é numérico (sem caracteres especiais), usar diretamente
+                                    try:
+                                        valor_float = float(value)
+                                    except ValueError:
+                                        # Tentar normalizar se houver caracteres especiais
+                                        normalized_val = value.replace('R$', '').replace(' ', '').replace(',', '.')
+                                        normalized_val = re.sub(r"[^0-9.]", "", normalized_val)
+                                        if normalized_val:
+                                            valor_float = float(normalized_val)
+                                        else:
+                                            logger.warning(f"Valor inválido para filtro de {field}: {value}")
+                                            continue
                                 else:
+                                    valor_float = float(value)
+                                
+                                # Aplicar filtro apenas se valor for válido e > 0
+                                if valor_float > 0:
                                     where_conditions.append(f"{field} <= %s")
-                                    params.append(float(value))
-                            except (ValueError, TypeError):
+                                    params.append(valor_float)
+                                else:
+                                    logger.warning(f"Valor deve ser maior que zero: {valor_float}")
+                            except (ValueError, TypeError) as e:
                                 # Se não conseguir converter, ignora o filtro
-                                logger.warning(f"Valor inválido para filtro de {field}: {value}")
+                                logger.warning(f"Valor inválido para filtro de {field}: {value} - Erro: {e}")
                                 continue
                         # Para filtros de valor range (valor_min e valor_max)
                         elif field == 'valor_min':
@@ -1096,13 +1108,22 @@ def index():
 
         # Filtro de valor: "até R$" - aplicar somente se > 0
         def _normalize_currency_str(s: str):
-            if not s:
+            if not s or not s.strip():
                 return None
             try:
-                s = s.replace('R$', '').replace(' ', '').replace('.', '').replace(',', '.')
+                # Remover R$, espaços, e tratar separadores
+                s = s.replace('R$', '').replace(' ', '').strip()
+                
+                # Se tem vírgula, assume que é separador decimal brasileiro
+                # Remove pontos (separadores de milhar) e troca vírgula por ponto
+                if ',' in s:
+                    s = s.replace('.', '').replace(',', '.')
+                # Remove tudo que não é número ou ponto decimal
                 s = re.sub(r"[^0-9.]", "", s)
+                
                 return float(s) if s else None
-            except Exception:
+            except Exception as e:
+                logger.warning(f"Erro ao normalizar valor: {s} - {e}")
                 return None
 
         raw_valor = request.args.get('filter_valor', '').strip()
@@ -1111,6 +1132,9 @@ def index():
         # Apenas aplica filtro se valor for > 0
         if normalized_valor is not None and normalized_valor > 0:
             filters['valor'] = str(normalized_valor)
+            logger.info(f"Filtro de valor aplicado: <= {normalized_valor}")
+        else:
+            logger.info(f"Filtro de valor não aplicado - valor recebido: {raw_valor}, normalizado: {normalized_valor}")
         
         # Filtro padrão: mostrar apenas precatórios que estão na ordem
         if 'esta_na_ordem' not in filters:
