@@ -399,19 +399,22 @@ class DatabaseManager:
     def get_filter_values(self, field: str) -> List[str]:
         """Obtém valores únicos para um campo específico - OTIMIZADO para velocidade"""
         try:
-            # Timeout reduzido - se demorar, retorna vazio
+            # Para organizacao, aumentar timeout e remover limite para mostrar todas
+            timeout = 15000 if field == 'organizacao' else 5000
+            limit = "" if field == 'organizacao' else "LIMIT 100"
+            
             try:
-                self.cursor.execute("SET statement_timeout TO 5000")
+                self.cursor.execute(f"SET statement_timeout TO {timeout}")
             except Exception:
                 pass
 
-            # Usar índice parcial (esta_na_ordem) + DISTINCT + LIMIT
-            # Muito mais rápido que GROUP BY ou TABLESAMPLE
+            # Usar índice parcial (esta_na_ordem) + DISTINCT
             query = (
                 f"SELECT DISTINCT {field} "
                 f"FROM {TABLE_NAME} "
                 f"WHERE {field} IS NOT NULL AND esta_na_ordem = TRUE "
-                f"LIMIT 100"
+                f"ORDER BY {field} "
+                f"{limit}"
             )
             self.cursor.execute(query)
             results = self.cursor.fetchall()

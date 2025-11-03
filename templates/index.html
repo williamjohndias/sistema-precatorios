@@ -82,17 +82,34 @@
                                 </div>
                                 <div class="col-md-3 mb-2">
                                     <label class="form-label">Organização</label>
-                                    <input type="text"
-                                           class="form-control form-control-sm"
-                                           name="filter_organizacao"
-                                           list="organizacaoList"
-                                           value="{{ filters.get('organizacao', '') }}"
-                                           placeholder="Digite para buscar...">
-                                    <datalist id="organizacaoList">
-                                        {% for value in filter_values.organizacao %}
-                                        <option value="{{ value }}">
-                                        {% endfor %}
-                                    </datalist>
+                                    <div class="searchable-select-wrapper">
+                                        <input type="text" 
+                                               class="form-control form-control-sm searchable-select-input" 
+                                               id="filter_organizacao_input"
+                                               placeholder="Digite para buscar ou selecione..."
+                                               autocomplete="off"
+                                               readonly
+                                               value="{{ filters.get('organizacao', '') if filters.get('organizacao') else '' }}">
+                                        <input type="hidden" 
+                                               name="filter_organizacao" 
+                                               id="filter_organizacao_hidden"
+                                               value="{{ filters.get('organizacao', '') }}">
+                                        <div class="searchable-select-dropdown" id="organizacao_dropdown" style="display: none;">
+                                            <div class="searchable-select-search">
+                                                <input type="text" 
+                                                       class="form-control form-control-sm" 
+                                                       id="organizacao_search"
+                                                       placeholder="Buscar organização..."
+                                                       autocomplete="off">
+                                            </div>
+                                            <div class="searchable-select-options" id="organizacao_options">
+                                                <div class="searchable-select-option" data-value="">Todas as organizações</div>
+                                                {% for value in filter_values.organizacao %}
+                                                <div class="searchable-select-option" data-value="{{ value }}">{{ value }}</div>
+                                                {% endfor %}
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                                 <div class="col-md-3 mb-2">
                                     <label class="form-label">Prioridade</label>

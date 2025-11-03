@@ -618,19 +618,112 @@ tr.selected:hover {
 
 /* Campo de input com datalist (campo de pesquisa) */
 input[list] {
+    padding-right: 2.5rem;
+    cursor: text;
+    position: relative;
+}
+
+/* Tornar o indicador clicável e visível - usar o indicador nativo do navegador */
+input[list]::-webkit-calendar-picker-indicator {
+    opacity: 1;
+    cursor: pointer;
+    width: 1.5rem;
+    height: 100%;
+    margin-right: 0.25rem;
+    background: transparent;
+}
+
+/* Estilizar o indicador para ter aparência consistente */
+input[list]::-webkit-calendar-picker-indicator:hover {
+    opacity: 0.8;
+}
+
+input[list]:focus::-webkit-calendar-picker-indicator {
+    opacity: 1;
+}
+
+/* Indicador visual de que é clicável */
+input[list]:hover {
+    border-color: #D2AF52;
+}
+
+/* ===== DROPDOWN PESQUISÁVEL PARA ORGANIZAÇÃO ===== */
+.searchable-select-wrapper {
+    position: relative;
+    width: 100%;
+}
+
+.searchable-select-input {
+    cursor: pointer;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23999' d='M10.293 3.293L6 7.586 1.707 3.293A1 1 0 00.293 4.707l5 5a1 1 0 001.414 0l5-5a1 1 0 10-1.414-1.414z'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 0.5rem center;
     background-size: 12px;
     padding-right: 2rem;
+    background-color: white;
 }
 
-input[list]::-webkit-calendar-picker-indicator {
-    opacity: 0;
+.searchable-select-input[readonly] {
+    cursor: pointer;
+    background-color: white;
 }
 
-input[list]:focus {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23D2AF52' d='M10.293 3.293L6 7.586 1.707 3.293A1 1 0 00.293 4.707l5 5a1 1 0 001.414 0l5-5a1 1 0 10-1.414-1.414z'/%3E%3C/svg%3E");
+.searchable-select-input:focus {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23D2AF52' d='M10.293 8.707L6 4.414 1.707 8.707A1 1 0 002.707 10.293l4.293-4.293 4.293 4.293a1 1 0 001.414-1.414z'/%3E%3C/svg%3E");
+}
+
+.searchable-select-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: white;
+    border: 1px solid #ced4da;
+    border-radius: 0.375rem;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+    z-index: 1000;
+    margin-top: 0.25rem;
+    max-height: 300px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.searchable-select-search {
+    padding: 0.5rem;
+    border-bottom: 1px solid #dee2e6;
+    background: #f8f9fa;
+}
+
+.searchable-select-search input {
+    width: 100%;
+    margin: 0;
+}
+
+.searchable-select-options {
+    overflow-y: auto;
+    max-height: 250px;
+}
+
+.searchable-select-option {
+    padding: 0.5rem 0.75rem;
+    cursor: pointer;
+    transition: background-color 0.15s ease-in-out;
+    border-bottom: 1px solid #f8f9fa;
+}
+
+.searchable-select-option:hover {
+    background-color: #f8f9fa;
+}
+
+.searchable-select-option.selected {
+    background-color: #D2AF52;
+    color: #000;
+    font-weight: 600;
+}
+
+.searchable-select-option.hidden {
+    display: none;
 }
 
 /* Texto de ajuda do campo de pesquisa */
