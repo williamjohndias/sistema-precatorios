@@ -13,6 +13,7 @@ from datetime import datetime, timezone, timedelta, date
 import json
 import os
 import re
+import time
 
 # Configurar logging otimizado para Vercel
 logging.basicConfig(
@@ -324,16 +325,26 @@ class DatabaseManager:
                     count_query += where_clause
             
             # Adicionar ordenação apenas se campo for seguro
+            # Usar índice composto quando possível para melhor performance
             if sort_field in safe_sort_fields:
+                # Se ordenando por ordem e há filtro esta_na_ordem, o índice composto será usado
                 base_query += f" ORDER BY {sort_field} {sort_order.upper()}"
+            else:
+                # Fallback: sempre ordenar por ordem se campo não for seguro
+                base_query += " ORDER BY ordem ASC"
             
             # Adicionar paginação
             offset = (page - 1) * per_page
             base_query += f" LIMIT {per_page} OFFSET {offset}"
             
             # Executar query principal primeiro (para evitar timeouts em COUNT)
+            # Usar EXPLAIN para debug se necessário
+            logger.info(f"Executando query: {base_query[:200]}... com {len(params)} parâmetros")
+            start_time = time.time()
             self.cursor.execute(base_query, params)
             data = self.cursor.fetchall()
+            query_time = time.time() - start_time
+            logger.info(f"Query executada em {query_time:.2f}s, retornou {len(data)} registros")
 
             # Determinar se precisamos fazer COUNT() real
             # Se houver filtros além do filtro padrão esta_na_ordem, fazer COUNT()
@@ -1101,17 +1112,16 @@ def index():
             page = 1
             
         try:
-            # Paginação: 1000 registros por página (boa performance)
-            # 84,405 registros total = ~85 páginas
-            # Com índices: 1000 registros carrega em ~0.05s
-            per_page = int(request.args.get('per_page', 1000))
+            # Paginação: 100 registros por página inicial (melhor performance)
+            # Usuário pode aumentar se necessário via parâmetro per_page
+            per_page = int(request.args.get('per_page', 100))
             if per_page < 1:
-                per_page = 1000
-            # Limite máximo de 5000 por página para manter boa performance
-            if per_page > 5000:
-                per_page = 5000
+                per_page = 100
+            # Limite máximo de 2000 por página para manter boa performance
+            if per_page > 2000:
+                per_page = 2000
         except (ValueError, TypeError):
-            per_page = 1000
+            per_page = 100
         
         # Parâmetros de ordenação (padrão: ordenar pela coluna 'ordem')
         sort_field = request.args.get('sort', 'ordem')
@@ -1186,26 +1196,30 @@ def index():
                 }
             }
         
-        # Carregar valores dos filtros de forma otimizada (apenas se necessário)
-        # Para organização, carregar apenas se houver filtro aplicado ou carregar via AJAX
+        # Carregar valores dos filtros via AJAX (não no carregamento inicial para melhor performance)
+        # Isso reduz significativamente o tempo de carregamento da página
         filter_values = {
-            'organizacao': [],  # Carregar via AJAX para melhor performance
-            'prioridade': db_manager.get_filter_values('prioridade'),
-            'tribunal': db_manager.get_filter_values('tribunal'),
-            'natureza': db_manager.get_filter_values('natureza'),
-            'situacao': db_manager.get_filter_values('situacao'),
-            'regime': db_manager.get_filter_values('regime'),
-            'ano_orc': db_manager.get_filter_values('ano_orc')
+            'organizacao': [],  # Carregar via AJAX
+            'prioridade': [],  # Carregar via AJAX
+            'tribunal': [],  # Carregar via AJAX
+            'natureza': [],  # Carregar via AJAX
+            'situacao': [],  # Carregar via AJAX
+            'regime': [],  # Carregar via AJAX
+            'ano_orc': []  # Carregar via AJAX
         }
         
-        # Se houver filtro de organização aplicado, carregar o valor atual
+        # Apenas carregar valores se houver filtro aplicado (para mostrar o valor selecionado)
         if filters.get('organizacao'):
-            org_values = db_manager.get_filter_values('organizacao')
-            # Incluir o valor atual mesmo se não estiver na lista limitada
+            org_values = db_manager.get_filter_values('organizacao', use_cache=True)
             current_org = filters.get('organizacao')
             if current_org and current_org not in org_values:
                 org_values.insert(0, current_org)
             filter_values['organizacao'] = org_values
+        
+        # Carregar apenas os valores dos filtros que estão aplicados
+        for field in ['prioridade', 'tribunal', 'natureza', 'situacao', 'regime', 'ano_orc']:
+            if filters.get(field):
+                filter_values[field] = db_manager.get_filter_values(field, use_cache=True)
         
         # max_valor já foi obtido anteriormente (não buscar novamente)
         

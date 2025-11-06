@@ -16,14 +16,10 @@ document.addEventListener('DOMContentLoaded', function() {
     setupDatalistClickable();
     reconfigureSearchableSelect = setupSearchableSelect();
     
-    // Carregar dropdowns de forma otimizada - organização carrega apenas quando necessário
-    // Carrega de forma sequencial com intervalo de 200ms entre cada (ver função loadDropdownOptions)
-    setTimeout(function() {
-        // Carregar outros filtros primeiro (mais rápidos)
-        loadDropdownOptions(['prioridade', 'tribunal', 'natureza', 'situacao', 'regime', 'ano_orc']);
-        // Organização carrega apenas quando o usuário clicar no campo
-        setupLazyLoadOrganizacao();
-    }, 300);
+    // Carregar dropdowns apenas quando necessário (lazy loading)
+    // Isso melhora significativamente o tempo de carregamento inicial da página
+    // Os filtros serão carregados quando o usuário clicar neles
+    setupLazyLoadAllFilters();
 });
 
 // Inicializar tabela
@@ -970,10 +966,65 @@ function loadDropdownOptions(fields) {
     loadNext();
 }
 
-// Carregar opções de organização apenas quando necessário (lazy loading)
-// Esta função agora é chamada automaticamente quando o dropdown abre
-function setupLazyLoadOrganizacao() {
-    // A função setupSearchableSelect agora cuida do carregamento lazy
-    // Esta função é mantida para compatibilidade mas não faz nada
-    // O carregamento acontece automaticamente quando o dropdown abre
+// Carregar todos os filtros apenas quando necessário (lazy loading)
+function setupLazyLoadAllFilters() {
+    // Configurar lazy loading para todos os selects
+    const filterSelects = document.querySelectorAll('select[name^="filter_"]');
+    
+    filterSelects.forEach(select => {
+        // Verificar se já tem opções (mais que apenas a primeira opção padrão)
+        if (select.options.length > 1) {
+            return; // Já carregado
+        }
+        
+        // Extrair nome do campo do atributo name
+        const fieldName = select.name.replace('filter_', '');
+        
+        // Carregar quando o usuário abrir o select
+        select.addEventListener('focus', function() {
+            loadSingleFilterOption(fieldName, select);
+        }, { once: true });
+        
+        select.addEventListener('click', function() {
+            loadSingleFilterOption(fieldName, select);
+        }, { once: true });
+    });
+}
+
+// Carregar opções de um único filtro
+function loadSingleFilterOption(fieldName, selectElement) {
+    // Verificar se já foi carregado
+    if (selectElement.options.length > 1) {
+        return;
+    }
+    
+    // Marcar como carregando
+    const loadingOption = document.createElement('option');
+    loadingOption.textContent = 'Carregando...';
+    loadingOption.disabled = true;
+    selectElement.appendChild(loadingOption);
+    
+    fetch(`/api/get_filter_options?field=${fieldName}`)
+        .then(response => response.json())
+        .then(data => {
+            loadingOption.remove();
+            if (data.success && data.values && data.values.length > 0) {
+                // Manter apenas a primeira opção (padrão)
+                const firstOption = selectElement.firstElementChild;
+                selectElement.innerHTML = '';
+                if (firstOption) selectElement.appendChild(firstOption);
+                
+                // Adicionar todas as opções
+                data.values.forEach(value => {
+                    const option = document.createElement('option');
+                    option.value = value;
+                    option.textContent = value;
+                    selectElement.appendChild(option);
+                });
+            }
+        })
+        .catch(error => {
+            loadingOption.remove();
+            console.error(`Erro ao carregar opções para ${fieldName}:`, error);
+        });
 }
