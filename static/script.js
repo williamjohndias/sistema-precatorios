@@ -6,6 +6,9 @@ const SELECTED_STORAGE_KEY = 'selected_precatorios_ids';
 
 // Inicialização
 document.addEventListener('DOMContentLoaded', function() {
+    // Remover loading se estiver ativo (caso tenha sido aplicado filtro)
+    showLoading(false);
+    
     initializeTable();
     setupSearch();
     setupEventListeners();
@@ -342,6 +345,16 @@ function undoChanges() {
     showAlert('Alterações desfeitas com sucesso', 'success');
 }
 
+// Mostrar loading ao aplicar filtros
+function showFilterLoading() {
+    showLoading(true);
+    // O loading será removido quando a página recarregar
+    // Mas adicionamos um timeout de segurança
+    setTimeout(() => {
+        showLoading(false);
+    }, 30000); // 30 segundos máximo
+}
+
 // Atualizar dados
 // Mostrar alerta
 function showAlert(message, type) {
@@ -666,6 +679,73 @@ function setupSearchableSelect() {
     
     // Flag para evitar duplo clique
     let isOpening = false;
+    let optionsLoaded = false;
+    
+    // Função para carregar opções se necessário
+    const ensureOptionsLoaded = () => {
+        if (optionsLoaded) return Promise.resolve();
+        
+        // Verificar se já tem opções (mais que apenas "Todas as organizações")
+        const existingOptions = options.querySelectorAll('.searchable-select-option');
+        if (existingOptions.length > 1) {
+            optionsLoaded = true;
+            return Promise.resolve();
+        }
+        
+        // Mostrar indicador de carregamento
+        const loadingIndicator = document.createElement('div');
+        loadingIndicator.className = 'searchable-select-option';
+        loadingIndicator.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Carregando organizações...';
+        loadingIndicator.style.textAlign = 'center';
+        loadingIndicator.style.color = '#6c757d';
+        options.appendChild(loadingIndicator);
+        
+        return fetch('/api/get_filter_options?field=organizacao')
+            .then(response => response.json())
+            .then(data => {
+                loadingIndicator.remove();
+                if (data.success && data.values && data.values.length > 0) {
+                    // Manter apenas a primeira opção (Todas as organizações)
+                    const firstOption = options.querySelector('.searchable-select-option[data-value=""]');
+                    options.innerHTML = '';
+                    if (firstOption) options.appendChild(firstOption);
+                    
+                    // Adicionar todas as opções
+                    data.values.forEach(value => {
+                        const option = document.createElement('div');
+                        option.className = 'searchable-select-option';
+                        option.dataset.value = value;
+                        option.textContent = value;
+                        options.appendChild(option);
+                    });
+                    
+                    // Reconfigurar eventos
+                    if (reconfigureSearchableSelect) {
+                        reconfigureSearchableSelect();
+                    }
+                    optionsLoaded = true;
+                } else {
+                    // Se não houver dados, mostrar mensagem
+                    const noDataMsg = document.createElement('div');
+                    noDataMsg.className = 'searchable-select-option';
+                    noDataMsg.textContent = 'Nenhuma organização encontrada';
+                    noDataMsg.style.textAlign = 'center';
+                    noDataMsg.style.color = '#6c757d';
+                    options.appendChild(noDataMsg);
+                }
+            })
+            .catch(error => {
+                loadingIndicator.remove();
+                console.error('Erro ao carregar opções de organização:', error);
+                const errorMsg = document.createElement('div');
+                errorMsg.className = 'searchable-select-option';
+                errorMsg.textContent = 'Erro ao carregar. Clique para tentar novamente.';
+                errorMsg.style.textAlign = 'center';
+                errorMsg.style.color = '#dc3545';
+                options.appendChild(errorMsg);
+                optionsLoaded = false; // Permitir tentar novamente
+            });
+    };
     
     // Limpar busca ao abrir dropdown
     const openDropdown = () => {
@@ -676,14 +756,19 @@ function setupSearchableSelect() {
         dropdown.style.display = isVisible ? 'none' : 'flex';
         
         if (!isVisible && searchInput) {
-            searchInput.value = '';
-            setTimeout(() => {
-                searchInput.focus();
-                // Limpar filtros ao abrir
-                const allOptions = options.querySelectorAll('.searchable-select-option');
-                allOptions.forEach(opt => opt.classList.remove('hidden'));
+            // Carregar opções se necessário
+            ensureOptionsLoaded().then(() => {
+                searchInput.value = '';
+                setTimeout(() => {
+                    searchInput.focus();
+                    // Limpar filtros ao abrir
+                    const allOptions = options.querySelectorAll('.searchable-select-option');
+                    allOptions.forEach(opt => opt.classList.remove('hidden'));
+                    isOpening = false;
+                }, 50);
+            }).catch(() => {
                 isOpening = false;
-            }, 50);
+            });
         } else {
             isOpening = false;
         }
@@ -886,52 +971,9 @@ function loadDropdownOptions(fields) {
 }
 
 // Carregar opções de organização apenas quando necessário (lazy loading)
+// Esta função agora é chamada automaticamente quando o dropdown abre
 function setupLazyLoadOrganizacao() {
-    const input = document.getElementById('filter_organizacao_input');
-    const optionsContainer = document.getElementById('organizacao_options');
-    
-    if (!input || !optionsContainer) return;
-    
-    let loaded = false;
-    
-    // Verificar se já tem opções carregadas
-    const existingOptions = optionsContainer.querySelectorAll('.searchable-select-option');
-    if (existingOptions.length > 1) { // Mais que apenas "Todas as organizações"
-        loaded = true;
-    }
-    
-    // Carregar quando o usuário clicar no campo pela primeira vez
-    const loadOrganizacaoOptions = () => {
-        if (loaded) return;
-        loaded = true;
-        
-        fetch('/api/get_filter_options?field=organizacao')
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    const firstOption = optionsContainer.querySelector('.searchable-select-option[data-value=""]');
-                    optionsContainer.innerHTML = '';
-                    if (firstOption) optionsContainer.appendChild(firstOption);
-                    data.values.forEach(value => {
-                        const option = document.createElement('div');
-                        option.className = 'searchable-select-option';
-                        option.dataset.value = value;
-                        option.textContent = value;
-                        optionsContainer.appendChild(option);
-                    });
-                    // Reconfigurar eventos para as novas opções
-                    if (reconfigureSearchableSelect) {
-                        reconfigureSearchableSelect();
-                    }
-                }
-            })
-            .catch(error => {
-                console.error('Erro ao carregar opções de organização:', error);
-                loaded = false; // Permitir tentar novamente
-            });
-    };
-    
-    // Adicionar listener para carregar na primeira interação
-    input.addEventListener('click', loadOrganizacaoOptions, { once: true });
-    input.addEventListener('focus', loadOrganizacaoOptions, { once: true });
+    // A função setupSearchableSelect agora cuida do carregamento lazy
+    // Esta função é mantida para compatibilidade mas não faz nada
+    // O carregamento acontece automaticamente quando o dropdown abre
 }

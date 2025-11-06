@@ -1644,24 +1644,31 @@ def admin_apply_indexes():
 
 @app.route('/api/get_filter_options', methods=['GET'])
 def get_filter_options():
-    """API para carregar opções de filtro sob demanda (AJAX)"""
+    """API para carregar opções de filtro sob demanda (AJAX) - OTIMIZADA"""
     try:
         if not db_manager.connect():
-            return jsonify({'success': False, 'message': 'Erro ao conectar com banco'})
+            return jsonify({'success': False, 'message': 'Erro ao conectar com banco'}), 500
         
         field = request.args.get('field', '')
         if field not in ['organizacao', 'prioridade', 'tribunal', 'natureza', 'situacao', 'regime', 'ano_orc']:
-            return jsonify({'success': False, 'message': 'Campo inválido'})
+            return jsonify({'success': False, 'message': 'Campo inválido'}), 400
         
-        values = db_manager.get_filter_values(field)
+        # Usar cache para melhor performance
+        values = db_manager.get_filter_values(field, use_cache=True)
+        
+        logger.info(f"API: Retornando {len(values)} valores para {field}")
+        
         return jsonify({
             'success': True,
             'field': field,
-            'values': values
+            'values': values,
+            'count': len(values)
         })
     except Exception as e:
         logger.error(f"Erro ao obter opções de filtro: {e}")
-        return jsonify({'success': False, 'message': str(e)})
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return jsonify({'success': False, 'message': str(e)}), 500
     finally:
         db_manager.disconnect()
 
