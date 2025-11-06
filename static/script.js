@@ -13,11 +13,14 @@ document.addEventListener('DOMContentLoaded', function() {
     setupDatalistClickable();
     reconfigureSearchableSelect = setupSearchableSelect();
     
-    // Carregar dropdowns após 500ms para não travar carregamento inicial
-    // Carrega de forma sequencial com intervalo de 300ms entre cada (ver função loadDropdownOptions)
+    // Carregar dropdowns de forma otimizada - organização carrega apenas quando necessário
+    // Carrega de forma sequencial com intervalo de 200ms entre cada (ver função loadDropdownOptions)
     setTimeout(function() {
-        loadDropdownOptions(['organizacao', 'prioridade', 'tribunal', 'natureza', 'situacao', 'regime', 'ano_orc']);
-    }, 500);
+        // Carregar outros filtros primeiro (mais rápidos)
+        loadDropdownOptions(['prioridade', 'tribunal', 'natureza', 'situacao', 'regime', 'ano_orc']);
+        // Organização carrega apenas quando o usuário clicar no campo
+        setupLazyLoadOrganizacao();
+    }, 300);
 });
 
 // Inicializar tabela
@@ -661,32 +664,43 @@ function setupSearchableSelect() {
     
     if (!input || !dropdown || !options) return;
     
-    // Usar diretamente o elemento, não clonar (para evitar problemas de ID)
-    const newInputElement = input;
+    // Flag para evitar duplo clique
+    let isOpening = false;
     
     // Limpar busca ao abrir dropdown
     const openDropdown = () => {
-        dropdown.style.display = 'flex';
-        if (searchInput) {
+        if (isOpening) return; // Prevenir duplo clique
+        isOpening = true;
+        
+        const isVisible = dropdown.style.display === 'flex';
+        dropdown.style.display = isVisible ? 'none' : 'flex';
+        
+        if (!isVisible && searchInput) {
             searchInput.value = '';
-            setTimeout(() => searchInput.focus(), 50);
-            // Limpar filtros ao abrir
-            const allOptions = options.querySelectorAll('.searchable-select-option');
-            allOptions.forEach(opt => opt.classList.remove('hidden'));
+            setTimeout(() => {
+                searchInput.focus();
+                // Limpar filtros ao abrir
+                const allOptions = options.querySelectorAll('.searchable-select-option');
+                allOptions.forEach(opt => opt.classList.remove('hidden'));
+                isOpening = false;
+            }, 50);
+        } else {
+            isOpening = false;
         }
     };
     
-    // Mostrar/esconder dropdown
-    newInputElement.addEventListener('focus', openDropdown);
+    // Usar diretamente o elemento (não clonar para evitar problemas)
+    const newInputElement = input;
     
+    // Remover listeners antigos se existirem (usar AbortController para melhor controle)
+    const controller = new AbortController();
+    
+    // Adicionar apenas um listener de clique (removido focus para evitar duplo clique)
     newInputElement.addEventListener('click', function(e) {
         e.stopPropagation();
-        if (dropdown.style.display === 'none' || !dropdown.style.display) {
-            openDropdown();
-        } else {
-            dropdown.style.display = 'none';
-        }
-    });
+        e.preventDefault();
+        openDropdown();
+    }, { signal: controller.signal });
     
     // Busca no dropdown (adicionar listener apenas uma vez)
     let searchHandlerAdded = false;
@@ -738,16 +752,25 @@ function setupSearchableSelect() {
     
     setupOptionClick();
     
-    // Fechar ao clicar fora
-    const clickOutsideHandler = function(e) {
-        if (!newInputElement.contains(e.target) && !dropdown.contains(e.target)) {
-            dropdown.style.display = 'none';
+    // Fechar ao clicar fora (usar event delegation para melhor performance)
+    let clickOutsideHandler = null;
+    const setupClickOutside = () => {
+        if (clickOutsideHandler) {
+            document.removeEventListener('click', clickOutsideHandler);
         }
+        clickOutsideHandler = function(e) {
+            if (!newInputElement.contains(e.target) && !dropdown.contains(e.target)) {
+                dropdown.style.display = 'none';
+                isOpening = false;
+            }
+        };
+        // Usar setTimeout para evitar conflito com o clique que abriu o dropdown
+        setTimeout(() => {
+            document.addEventListener('click', clickOutsideHandler);
+        }, 100);
     };
     
-    // Remover listener antigo se existir
-    document.removeEventListener('click', clickOutsideHandler);
-    document.addEventListener('click', clickOutsideHandler);
+    setupClickOutside();
     
     // Retornar função para reconfigurar após carregar opções
     return setupOptionClick;
@@ -855,9 +878,60 @@ function loadDropdownOptions(fields) {
                 console.error(`Erro ao carregar opções para ${field}:`, error);
             })
             .finally(() => {
-                // Intervalo pequeno entre requisições para aliviar o banco
-                setTimeout(loadNext, 300);
+                // Intervalo menor entre requisições para melhor performance
+                setTimeout(loadNext, 200);
             });
     };
     loadNext();
+}
+
+// Carregar opções de organização apenas quando necessário (lazy loading)
+function setupLazyLoadOrganizacao() {
+    const input = document.getElementById('filter_organizacao_input');
+    const optionsContainer = document.getElementById('organizacao_options');
+    
+    if (!input || !optionsContainer) return;
+    
+    let loaded = false;
+    
+    // Verificar se já tem opções carregadas
+    const existingOptions = optionsContainer.querySelectorAll('.searchable-select-option');
+    if (existingOptions.length > 1) { // Mais que apenas "Todas as organizações"
+        loaded = true;
+    }
+    
+    // Carregar quando o usuário clicar no campo pela primeira vez
+    const loadOrganizacaoOptions = () => {
+        if (loaded) return;
+        loaded = true;
+        
+        fetch('/api/get_filter_options?field=organizacao')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const firstOption = optionsContainer.querySelector('.searchable-select-option[data-value=""]');
+                    optionsContainer.innerHTML = '';
+                    if (firstOption) optionsContainer.appendChild(firstOption);
+                    data.values.forEach(value => {
+                        const option = document.createElement('div');
+                        option.className = 'searchable-select-option';
+                        option.dataset.value = value;
+                        option.textContent = value;
+                        optionsContainer.appendChild(option);
+                    });
+                    // Reconfigurar eventos para as novas opções
+                    if (reconfigureSearchableSelect) {
+                        reconfigureSearchableSelect();
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Erro ao carregar opções de organização:', error);
+                loaded = false; // Permitir tentar novamente
+            });
+    };
+    
+    // Adicionar listener para carregar na primeira interação
+    input.addEventListener('click', loadOrganizacaoOptions, { once: true });
+    input.addEventListener('focus', loadOrganizacaoOptions, { once: true });
 }

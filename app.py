@@ -408,12 +408,25 @@ class DatabaseManager:
                 }
             }
     
-    def get_filter_values(self, field: str) -> List[str]:
-        """Obtém valores únicos para um campo específico - OTIMIZADO para velocidade"""
+    def get_filter_values(self, field: str, use_cache: bool = True) -> List[str]:
+        """Obtém valores únicos para um campo específico - OTIMIZADO para velocidade com cache"""
+        global _filter_values_cache, _filter_cache_timestamp
+        
+        # Verificar cache primeiro
+        if use_cache:
+            now = datetime.now()
+            cache_key = field
+            if cache_key in _filter_values_cache and cache_key in _filter_cache_timestamp:
+                cache_age = now - _filter_cache_timestamp[cache_key]
+                if cache_age < timedelta(minutes=10):  # Cache válido por 10 minutos
+                    logger.info(f"Usando cache para {field}: {len(_filter_values_cache[cache_key])} valores")
+                    return _filter_values_cache[cache_key]
+        
         try:
-            # Para organizacao, aumentar timeout e remover limite para mostrar todas
-            timeout = 15000 if field == 'organizacao' else 5000
-            limit = "" if field == 'organizacao' else "LIMIT 100"
+            # Para organizacao, usar limite maior mas ainda limitado para performance
+            timeout = 10000 if field == 'organizacao' else 5000
+            # Limitar a 200 opções para organização (suficiente para busca)
+            limit = "LIMIT 200" if field == 'organizacao' else "LIMIT 100"
             
             try:
                 self.cursor.execute(f"SET statement_timeout TO {timeout}")
@@ -431,6 +444,13 @@ class DatabaseManager:
             self.cursor.execute(query)
             results = self.cursor.fetchall()
             values = sorted([str(row[field]) for row in results if row[field] is not None])
+            
+            # Atualizar cache
+            if use_cache:
+                _filter_values_cache[cache_key] = values
+                _filter_cache_timestamp[cache_key] = datetime.now()
+                logger.info(f"Cache atualizado para {field}: {len(values)} valores")
+            
             return values
         except psycopg2.Error as e:
             logger.warning(f"Timeout ao buscar valores para {field}: {e}")
@@ -947,6 +967,10 @@ modified_data = {}
 _cached_max_valor = None
 _cache_timestamp = None
 
+# Cache para valores de filtro (atualizado a cada 10 minutos)
+_filter_values_cache = {}
+_filter_cache_timestamp = {}
+
 def get_cached_max_valor() -> float:
     """Retorna valor máximo com cache de 5 minutos para performance"""
     global _cached_max_valor, _cache_timestamp
@@ -1162,10 +1186,10 @@ def index():
                 }
             }
         
-        # Carregar apenas valores dos filtros que realmente precisam (com cache/otimização)
-        # Usamos get_filter_values que é otimizado com LIMIT e índices
+        # Carregar valores dos filtros de forma otimizada (apenas se necessário)
+        # Para organização, carregar apenas se houver filtro aplicado ou carregar via AJAX
         filter_values = {
-            'organizacao': db_manager.get_filter_values('organizacao'),
+            'organizacao': [],  # Carregar via AJAX para melhor performance
             'prioridade': db_manager.get_filter_values('prioridade'),
             'tribunal': db_manager.get_filter_values('tribunal'),
             'natureza': db_manager.get_filter_values('natureza'),
@@ -1173,6 +1197,15 @@ def index():
             'regime': db_manager.get_filter_values('regime'),
             'ano_orc': db_manager.get_filter_values('ano_orc')
         }
+        
+        # Se houver filtro de organização aplicado, carregar o valor atual
+        if filters.get('organizacao'):
+            org_values = db_manager.get_filter_values('organizacao')
+            # Incluir o valor atual mesmo se não estiver na lista limitada
+            current_org = filters.get('organizacao')
+            if current_org and current_org not in org_values:
+                org_values.insert(0, current_org)
+            filter_values['organizacao'] = org_values
         
         # max_valor já foi obtido anteriormente (não buscar novamente)
         
