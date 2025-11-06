@@ -16,10 +16,8 @@ document.addEventListener('DOMContentLoaded', function() {
     setupDatalistClickable();
     reconfigureSearchableSelect = setupSearchableSelect();
     
-    // Carregar dropdowns apenas quando necessário (lazy loading)
-    // Isso melhora significativamente o tempo de carregamento inicial da página
-    // Os filtros serão carregados quando o usuário clicar neles
-    setupLazyLoadAllFilters();
+    // Os filtros já vêm carregados do servidor
+    // Não precisa fazer lazy loading - já estão disponíveis
 });
 
 // Inicializar tabela

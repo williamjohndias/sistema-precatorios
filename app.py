@@ -1174,7 +1174,25 @@ def index():
         if 'esta_na_ordem' not in filters:
             filters['esta_na_ordem'] = 'true'
         
-        # Obter dados paginados com ordenação (PRIORIDADE: carregar isso primeiro)
+        # PRIMEIRO: Carregar valores dos filtros (ANTES dos dados principais)
+        # Usar cache para melhor performance
+        logger.info("Carregando valores de filtros PRIMEIRO...")
+        start_filters = time.time()
+        
+        filter_values = {
+            'organizacao': db_manager.get_filter_values('organizacao', use_cache=True),
+            'prioridade': db_manager.get_filter_values('prioridade', use_cache=True),
+            'tribunal': db_manager.get_filter_values('tribunal', use_cache=True),
+            'natureza': db_manager.get_filter_values('natureza', use_cache=True),
+            'situacao': db_manager.get_filter_values('situacao', use_cache=True),
+            'regime': db_manager.get_filter_values('regime', use_cache=True),
+            'ano_orc': db_manager.get_filter_values('ano_orc', use_cache=True)
+        }
+        
+        filters_time = time.time() - start_filters
+        logger.info(f"Filtros carregados em {filters_time:.2f}s - Total de opções: {sum(len(v) for v in filter_values.values())}")
+        
+        # DEPOIS: Obter dados paginados com ordenação
         try:
             result = db_manager.get_precatorios_paginated(page=page, per_page=per_page, filters=filters, sort_field=sort_field, sort_order=sort_order)
         except Exception as e:
@@ -1195,31 +1213,6 @@ def index():
                     'next_num': None
                 }
             }
-        
-        # Carregar valores dos filtros via AJAX (não no carregamento inicial para melhor performance)
-        # Isso reduz significativamente o tempo de carregamento da página
-        filter_values = {
-            'organizacao': [],  # Carregar via AJAX
-            'prioridade': [],  # Carregar via AJAX
-            'tribunal': [],  # Carregar via AJAX
-            'natureza': [],  # Carregar via AJAX
-            'situacao': [],  # Carregar via AJAX
-            'regime': [],  # Carregar via AJAX
-            'ano_orc': []  # Carregar via AJAX
-        }
-        
-        # Apenas carregar valores se houver filtro aplicado (para mostrar o valor selecionado)
-        if filters.get('organizacao'):
-            org_values = db_manager.get_filter_values('organizacao', use_cache=True)
-            current_org = filters.get('organizacao')
-            if current_org and current_org not in org_values:
-                org_values.insert(0, current_org)
-            filter_values['organizacao'] = org_values
-        
-        # Carregar apenas os valores dos filtros que estão aplicados
-        for field in ['prioridade', 'tribunal', 'natureza', 'situacao', 'regime', 'ano_orc']:
-            if filters.get(field):
-                filter_values[field] = db_manager.get_filter_values(field, use_cache=True)
         
         # max_valor já foi obtido anteriormente (não buscar novamente)
         
