@@ -434,27 +434,45 @@ class DatabaseManager:
                     return _filter_values_cache[cache_key]
         
         try:
-            # Para organizacao, usar limite maior mas ainda limitado para performance
-            timeout = 10000 if field == 'organizacao' else 5000
-            # Limitar a 200 opções para organização (suficiente para busca)
-            limit = "LIMIT 200" if field == 'organizacao' else "LIMIT 100"
+            # Para organizacao, usar timeout maior e query otimizada
+            if field == 'organizacao':
+                timeout = 20000  # 20 segundos para organização
+                limit = "LIMIT 500"  # Aumentar limite para organização
+                # Query otimizada usando índice parcial se existir
+                query = (
+                    f"SELECT DISTINCT {field} "
+                    f"FROM {TABLE_NAME} "
+                    f"WHERE {field} IS NOT NULL AND esta_na_ordem = TRUE "
+                    f"ORDER BY {field} "
+                    f"{limit}"
+                )
+            else:
+                timeout = 5000
+                limit = "LIMIT 100"
+                query = (
+                    f"SELECT DISTINCT {field} "
+                    f"FROM {TABLE_NAME} "
+                    f"WHERE {field} IS NOT NULL AND esta_na_ordem = TRUE "
+                    f"ORDER BY {field} "
+                    f"{limit}"
+                )
             
             try:
                 self.cursor.execute(f"SET statement_timeout TO {timeout}")
             except Exception:
                 pass
 
-            # Usar índice parcial (esta_na_ordem) + DISTINCT
-            query = (
-                f"SELECT DISTINCT {field} "
-                f"FROM {TABLE_NAME} "
-                f"WHERE {field} IS NOT NULL AND esta_na_ordem = TRUE "
-                f"ORDER BY {field} "
-                f"{limit}"
-            )
+            logger.info(f"Executando query para {field}...")
+            start_time = time.time()
             self.cursor.execute(query)
             results = self.cursor.fetchall()
+            query_time = time.time() - start_time
+            logger.info(f"Query para {field} executada em {query_time:.2f}s, retornou {len(results)} resultados")
+            
             values = sorted([str(row[field]) for row in results if row[field] is not None])
+            
+            if len(values) == 0:
+                logger.warning(f"Nenhum valor encontrado para {field} - pode indicar problema na query ou dados")
             
             # Atualizar cache
             if use_cache:
@@ -463,14 +481,33 @@ class DatabaseManager:
                 logger.info(f"Cache atualizado para {field}: {len(values)} valores")
             
             return values
+        except psycopg2.OperationalError as e:
+            logger.error(f"Erro operacional ao buscar valores para {field}: {e}")
+            # Retornar cache antigo se disponível
+            if use_cache and cache_key in _filter_values_cache:
+                logger.warning(f"Usando cache antigo para {field} devido a erro")
+                return _filter_values_cache[cache_key]
+            return []
         except psycopg2.Error as e:
-            logger.warning(f"Timeout ao buscar valores para {field}: {e}")
-            # Retornar vazio ao invés de travar
+            logger.error(f"Erro PostgreSQL ao buscar valores para {field}: {e}")
+            # Retornar cache antigo se disponível
+            if use_cache and cache_key in _filter_values_cache:
+                logger.warning(f"Usando cache antigo para {field} devido a erro")
+                return _filter_values_cache[cache_key]
             if self.connection:
                 try:
                     self.connection.rollback()
                 except:
                     pass
+            return []
+        except Exception as e:
+            logger.error(f"Erro inesperado ao buscar valores para {field}: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            # Retornar cache antigo se disponível
+            if use_cache and cache_key in _filter_values_cache:
+                logger.warning(f"Usando cache antigo para {field} devido a erro")
+                return _filter_values_cache[cache_key]
             return []
 
     def get_all_filter_values(self, fields: List[str]) -> Dict[str, List[str]]:
@@ -1176,18 +1213,29 @@ def index():
         
         # PRIMEIRO: Carregar valores dos filtros (ANTES dos dados principais)
         # Usar cache para melhor performance
+        # Carregar organização por último (pode ser mais lenta) para não bloquear outros filtros
         logger.info("Carregando valores de filtros PRIMEIRO...")
         start_filters = time.time()
         
+        # Carregar filtros rápidos primeiro
         filter_values = {
-            'organizacao': db_manager.get_filter_values('organizacao', use_cache=True),
             'prioridade': db_manager.get_filter_values('prioridade', use_cache=True),
             'tribunal': db_manager.get_filter_values('tribunal', use_cache=True),
             'natureza': db_manager.get_filter_values('natureza', use_cache=True),
             'situacao': db_manager.get_filter_values('situacao', use_cache=True),
             'regime': db_manager.get_filter_values('regime', use_cache=True),
-            'ano_orc': db_manager.get_filter_values('ano_orc', use_cache=True)
+            'ano_orc': db_manager.get_filter_values('ano_orc', use_cache=True),
+            'organizacao': []  # Carregar por último
         }
+        
+        # Carregar organização por último (pode demorar mais)
+        try:
+            logger.info("Carregando organização (pode demorar mais)...")
+            filter_values['organizacao'] = db_manager.get_filter_values('organizacao', use_cache=True)
+            logger.info(f"Organização carregada: {len(filter_values['organizacao'])} valores")
+        except Exception as e:
+            logger.error(f"Erro ao carregar organização: {e}")
+            filter_values['organizacao'] = []  # Deixar vazio se falhar
         
         filters_time = time.time() - start_filters
         logger.info(f"Filtros carregados em {filters_time:.2f}s - Total de opções: {sum(len(v) for v in filter_values.values())}")
