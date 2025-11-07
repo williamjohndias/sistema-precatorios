@@ -3,140 +3,191 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Logs de Alterações - Sistema Precatórios</title>
+    <title>Logs de Alterações - Precs</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
 </head>
 <body>
-    <!-- Navbar -->
-    <nav class="navbar navbar-expand-lg navbar-dark" style="background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);">
-        <div class="container-fluid">
-            <span class="navbar-brand mb-0 h1">
-                <i class="fas fa-history me-2"></i>
-                Logs de Alterações
-            </span>
-            <div class="navbar-nav ms-auto">
-                <a class="nav-link btn" href="{{ url_for('index') }}" style="border-color:#D2AF52;color:#D2AF52;background-color:rgba(210,175,82,0.1);">
-                    <i class="fas fa-table me-1"></i>
-                    Voltar aos Precatórios
+    <!-- Partículas de símbolos jurídicos -->
+    <div class="justice-particles">
+        <div class="justice-particle">⚖</div>
+        <div class="justice-particle">📜</div>
+        <div class="justice-particle">⚖</div>
+        <div class="justice-particle">📜</div>
+        <div class="justice-particle">⚖</div>
+        <div class="justice-particle">📜</div>
+        <div class="justice-particle">⚖</div>
+        <div class="justice-particle">📜</div>
+        <div class="justice-particle">⚖</div>
+    </div>
+    
+    <nav class="navbar navbar-expand-lg navbar-dark precs-navbar">
+        <div class="container-fluid px-4">
+            <a class="navbar-brand d-flex align-items-center" href="{{ url_for('index') }}">
+                <div class="logo-icon me-3">
+                    <i class="fas fa-balance-scale"></i>
+                </div>
+                <div class="d-flex flex-column">
+                    <span class="fw-bold precs-logo-text mb-0">Precs</span>
+                    <span class="precs-subtitle small">Sistema de Precatórios</span>
+                </div>
+            </a>
+            <div class="d-flex gap-3 align-items-center">
+                <a class="btn btn-nav-action" href="{{ url_for('index') }}">
+                    <i class="fas fa-table me-2"></i>Precatórios
                 </a>
             </div>
         </div>
     </nav>
 
-    <div class="container-fluid mt-4">
-        <!-- Filtros -->
-        <div class="row mb-4">
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header">
-                        <h5 class="mb-0">
-                            <i class="fas fa-filter me-2"></i>
-                            Filtros
-                        </h5>
+    <div class="main-container">
+        <!-- Alertas -->
+        <div id="alertContainer" class="alert-container"></div>
+
+        <!-- Header Section -->
+        <div class="page-header">
+            <div class="header-content">
+                <div class="header-title-section">
+                    <h1 class="page-title">
+                        <i class="fas fa-history me-3"></i>
+                        Logs de Alterações
+                    </h1>
+                    <p class="page-subtitle">Histórico completo de todas as modificações realizadas no sistema</p>
+                </div>
+                <div class="header-stats">
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-file-alt"></i>
+                        </div>
+                        <div class="stat-content">
+                            <div class="stat-value" style="color: #ffffff;">{{ pagination.total_count }}</div>
+                            <div class="stat-label">Total de Logs</div>
+                        </div>
                     </div>
-                    <div class="card-body">
-                        <form method="GET" class="row g-3">
-                            <div class="col-md-3">
-                                <label for="filter_precatorio" class="form-label">Precatório</label>
-                                <select class="form-select" id="filter_precatorio" name="filter_precatorio">
-                                    <option value="">Todos os precatórios</option>
-                                    {% for value in filter_values.precatorio %}
-                                    <option value="{{ value }}" {% if filters.get('precatorio') == value %}selected{% endif %}>
-                                        {{ value }}
-                                    </option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-                            <div class="col-md-3">
-                                <label for="filter_organizacao" class="form-label">Organização</label>
-                                <select class="form-select" id="filter_organizacao" name="filter_organizacao">
-                                    <option value="">Todas as organizações</option>
-                                    {% for value in filter_values.organizacao %}
-                                    <option value="{{ value }}" {% if filters.get('organizacao') == value %}selected{% endif %}>
-                                        {{ value }}
-                                    </option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-                            <div class="col-md-3">
-                                <label for="filter_prioridade" class="form-label">Prioridade</label>
-                                <select class="form-select" id="filter_prioridade" name="filter_prioridade">
-                                    <option value="">Todas as prioridades</option>
-                                    {% for value in filter_values.prioridade %}
-                                    <option value="{{ value }}" {% if filters.get('prioridade') == value %}selected{% endif %}>
-                                        {{ value }}
-                                    </option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-                            <div class="col-md-3">
-                                <label for="filter_tribunal" class="form-label">Tribunal</label>
-                                <select class="form-select" id="filter_tribunal" name="filter_tribunal">
-                                    <option value="">Todos os tribunais</option>
-                                    {% for value in filter_values.tribunal %}
-                                    <option value="{{ value }}" {% if filters.get('tribunal') == value %}selected{% endif %}>
-                                        {{ value }}
-                                    </option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-                            <div class="col-md-3">
-                                <label for="filter_campo_modificado" class="form-label">Campo Modificado</label>
-                                <select class="form-select" id="filter_campo_modificado" name="filter_campo_modificado">
-                                    <option value="">Todos os campos</option>
-                                    {% for value in filter_values.campo_modificado %}
-                                    <option value="{{ value }}" {% if filters.get('campo_modificado') == value %}selected{% endif %}>
-                                        {{ value }}
-                                    </option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-                            <div class="col-md-3">
-                                <label for="filter_data_inicio" class="form-label">Data Início</label>
-                                <input type="date" class="form-control" id="filter_data_inicio" 
-                                       name="filter_data_inicio" value="{{ filters.get('data_inicio', '') }}">
-                            </div>
-                            <div class="col-md-3">
-                                <label for="filter_data_fim" class="form-label">Data Fim</label>
-                                <input type="date" class="form-control" id="filter_data_fim" 
-                                       name="filter_data_fim" value="{{ filters.get('data_fim', '') }}">
-                            </div>
-                            <div class="col-md-3 d-flex align-items-end">
-                                <button type="submit" class="btn btn-primary me-2">
-                                    <i class="fas fa-search me-1"></i>
-                                    Filtrar
-                                </button>
-                                <a href="{{ url_for('logs') }}" class="btn btn-outline-secondary">
-                                    <i class="fas fa-times me-1"></i>
-                                    Limpar
-                                </a>
-                            </div>
-                        </form>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-list"></i>
+                        </div>
+                        <div class="stat-content">
+                            <div class="stat-value" style="color: #ffffff;">{{ logs|length }}</div>
+                            <div class="stat-label">Nesta Página</div>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
 
+        <!-- Filtros -->
+        <div class="filters-section">
+            <div class="filters-card">
+                <div class="filters-header">
+                    <div class="filters-title">
+                        <i class="fas fa-filter me-2"></i>
+                        <span>Filtros de Busca</span>
+                    </div>
+                </div>
+                <div class="filters-body">
+                    <form method="GET" class="row g-3">
+                        <div class="col-md-2">
+                            <label for="filter_precatorio" class="form-label small fw-semibold text-muted mb-1">Precatório</label>
+                            <select class="form-select form-select-sm" id="filter_precatorio" name="filter_precatorio">
+                                <option value="">Todos</option>
+                                {% for value in filter_values.precatorio %}
+                                <option value="{{ value }}" {% if filters.get('precatorio') == value %}selected{% endif %}>
+                                    {{ value }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label for="filter_organizacao" class="form-label small fw-semibold text-muted mb-1">Organização</label>
+                            <select class="form-select form-select-sm" id="filter_organizacao" name="filter_organizacao">
+                                <option value="">Todas</option>
+                                {% for value in filter_values.organizacao %}
+                                <option value="{{ value }}" {% if filters.get('organizacao') == value %}selected{% endif %}>
+                                    {{ value }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label for="filter_prioridade" class="form-label small fw-semibold text-muted mb-1">Prioridade</label>
+                            <select class="form-select form-select-sm" id="filter_prioridade" name="filter_prioridade">
+                                <option value="">Todas</option>
+                                {% for value in filter_values.prioridade %}
+                                <option value="{{ value }}" {% if filters.get('prioridade') == value %}selected{% endif %}>
+                                    {{ value }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label for="filter_tribunal" class="form-label small fw-semibold text-muted mb-1">Tribunal</label>
+                            <select class="form-select form-select-sm" id="filter_tribunal" name="filter_tribunal">
+                                <option value="">Todos</option>
+                                {% for value in filter_values.tribunal %}
+                                <option value="{{ value }}" {% if filters.get('tribunal') == value %}selected{% endif %}>
+                                    {{ value }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label for="filter_campo_modificado" class="form-label small fw-semibold text-muted mb-1">Campo</label>
+                            <select class="form-select form-select-sm" id="filter_campo_modificado" name="filter_campo_modificado">
+                                <option value="">Todos</option>
+                                {% for value in filter_values.campo_modificado %}
+                                <option value="{{ value }}" {% if filters.get('campo_modificado') == value %}selected{% endif %}>
+                                    {{ value }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label for="filter_data_inicio" class="form-label small fw-semibold text-muted mb-1">Data Início</label>
+                            <input type="date" class="form-control form-control-sm" id="filter_data_inicio" 
+                                   name="filter_data_inicio" value="{{ filters.get('data_inicio', '') }}">
+                        </div>
+                        <div class="col-md-2">
+                            <label for="filter_data_fim" class="form-label small fw-semibold text-muted mb-1">Data Fim</label>
+                            <input type="date" class="form-control form-control-sm" id="filter_data_fim" 
+                                   name="filter_data_fim" value="{{ filters.get('data_fim', '') }}">
+                        </div>
+                        <div class="col-md-4 d-flex align-items-end gap-2">
+                            <button type="submit" class="btn precs-btn-gold px-4">
+                                <i class="fas fa-search me-2"></i>Filtrar
+                            </button>
+                            <a href="{{ url_for('logs') }}" class="btn btn-nav-action">
+                                <i class="fas fa-times me-2"></i>Limpar
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
         <!-- Tabela de Logs -->
-        <div class="row">
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <h5 class="mb-0">
-                            <i class="fas fa-list me-2"></i>
-                            Histórico de Alterações
-                        </h5>
-                        <span class="badge bg-info">
+        <div class="table-section">
+            <div class="table-card">
+                <div class="table-header">
+                    <div class="table-header-left">
+                        <i class="fas fa-list me-2"></i>
+                        <span>Histórico de Alterações</span>
+                    </div>
+                    <div class="table-header-right">
+                        <span class="modifications-badge">
+                            <i class="fas fa-file-alt me-1"></i>
                             {{ pagination.total_count }} registros
                         </span>
                     </div>
-                    <div class="card-body p-0">
+                </div>
+                <div class="table-body">
+                    <div class="table-responsive-wrapper">
                         {% if logs %}
                         <div class="table-responsive">
                             <table class="table table-hover mb-0">
-                                <thead style="background-color:#D2AF52;color:#000;">
+                                <thead class="table-header-sticky">
                                     <tr>
                                         <th class="text-center">Data/Hora</th>
                                         <th class="text-center">Precatório</th>
@@ -152,42 +203,42 @@
                                     {% for log in logs %}
                                     <tr>
                                         <td class="text-center">
-                                            <small class="text-muted">
+                                            <small style="color: #a0a0a0;">
                                                 {{ log.data_modificacao.strftime('%d/%m/%Y') }}<br>
                                                 {{ log.data_modificacao.strftime('%H:%M:%S') }}
                                             </small>
                                         </td>
                                         <td class="text-center">
-                                            <strong>{{ log.precatorio or 'N/A' }}</strong>
+                                            <strong style="color: #ffffff;">{{ log.precatorio or 'N/A' }}</strong>
                                         </td>
                                         <td class="text-center">
-                                            <span class="badge bg-primary">
+                                            <span class="badge" style="background: rgba(212, 175, 55, 0.3); color: #D4AF37; border: 1px solid rgba(212, 175, 55, 0.5);">
                                                 {{ log.ordem or 'N/A' }}
                                             </span>
                                         </td>
-                                        <td class="text-center">
+                                        <td class="text-center" style="color: #e0e0e0;">
                                             {{ log.organizacao or 'N/A' }}
                                         </td>
                                         <td class="text-center">
-                                            <span class="badge bg-info">
+                                            <span class="badge" style="background: rgba(212, 175, 55, 0.2); color: #D4AF37; border: 1px solid rgba(212, 175, 55, 0.4);">
                                                 {{ log.prioridade or 'N/A' }}
                                             </span>
                                         </td>
                                         <td class="text-center">
-                                            <span class="badge bg-secondary">
+                                            <span class="badge" style="background: rgba(212, 175, 55, 0.2); color: #D4AF37; border: 1px solid rgba(212, 175, 55, 0.4);">
                                                 {{ log.tribunal or 'N/A' }}
                                             </span>
                                         </td>
                                         <td class="text-center">
-                                            <span class="badge bg-warning text-dark">
+                                            <span class="badge" style="background: rgba(212, 175, 55, 0.3); color: #D4AF37; border: 1px solid rgba(212, 175, 55, 0.5);">
                                                 {{ log.campo_modificado }}
                                             </span>
                                         </td>
                                         <td class="text-center">
-                                            <div class="change-display">
-                                                <span class="old-value">{{ log.valor_anterior or '-' }}</span>
-                                                <span class="change-arrow">→</span>
-                                                <span class="new-value">{{ log.valor_novo or '-' }}</span>
+                                            <div class="change-display" style="display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
+                                                <span class="old-value" style="color: #ff6b6b; text-decoration: line-through;">{{ log.valor_anterior or '-' }}</span>
+                                                <span class="change-arrow" style="color: #D4AF37;">→</span>
+                                                <span class="new-value" style="color: #51cf66; font-weight: 600;">{{ log.valor_novo or '-' }}</span>
                                             </div>
                                         </td>
                                     </tr>
@@ -197,9 +248,9 @@
                         </div>
                         {% else %}
                         <div class="text-center py-5">
-                            <i class="fas fa-history fa-3x text-muted mb-3"></i>
-                            <h5 class="text-muted">Nenhum log encontrado</h5>
-                            <p class="text-muted">Não há registros de alterações para os filtros aplicados.</p>
+                            <i class="fas fa-history fa-3x mb-3" style="color: #666;"></i>
+                            <h5 style="color: #a0a0a0;">Nenhum log encontrado</h5>
+                            <p style="color: #888;">Não há registros de alterações para os filtros aplicados.</p>
                         </div>
                         {% endif %}
                     </div>
@@ -209,56 +260,54 @@
 
         <!-- Paginação -->
         {% if pagination.total_pages > 1 %}
-        <div class="row mt-4">
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-body">
-                        <nav aria-label="Paginação">
-                            <ul class="pagination justify-content-center mb-0">
-                                {% if pagination.has_prev %}
+        <div class="pagination-section">
+            <div class="pagination-card">
+                <div class="pagination-body">
+                    <nav aria-label="Paginação">
+                        <ul class="pagination justify-content-center mb-0">
+                            {% if pagination.has_prev %}
+                            <li class="page-item">
+                                <a class="page-link" href="{{ url_for('logs', **dict(request.args, page=pagination.page-1)) }}">
+                                    <i class="fas fa-chevron-left"></i> Anterior
+                                </a>
+                            </li>
+                            {% endif %}
+                            
+                            {% for page_num in range(1, pagination.total_pages + 1) %}
+                                {% if page_num == pagination.page %}
+                                <li class="page-item active">
+                                    <span class="page-link">{{ page_num }}</span>
+                                </li>
+                                {% elif page_num <= 3 or page_num > pagination.total_pages - 3 or (page_num >= pagination.page - 1 and page_num <= pagination.page + 1) %}
                                 <li class="page-item">
-                                    <a class="page-link" href="{{ url_for('logs', **dict(request.args, page=pagination.page-1)) }}">
-                                        <i class="fas fa-chevron-left"></i> Anterior
-                                    </a>
+                                    <a class="page-link" href="{{ url_for('logs', **dict(request.args, page=page_num)) }}">{{ page_num }}</a>
+                                </li>
+                                {% elif page_num == 4 and pagination.page > 5 %}
+                                <li class="page-item disabled">
+                                    <span class="page-link">...</span>
+                                </li>
+                                {% elif page_num == pagination.total_pages - 3 and pagination.page < pagination.total_pages - 4 %}
+                                <li class="page-item disabled">
+                                    <span class="page-link">...</span>
                                 </li>
                                 {% endif %}
-                                
-                                {% for page_num in range(1, pagination.total_pages + 1) %}
-                                    {% if page_num == pagination.page %}
-                                    <li class="page-item active">
-                                        <span class="page-link">{{ page_num }}</span>
-                                    </li>
-                                    {% elif page_num <= 3 or page_num > pagination.total_pages - 3 or (page_num >= pagination.page - 1 and page_num <= pagination.page + 1) %}
-                                    <li class="page-item">
-                                        <a class="page-link" href="{{ url_for('logs', **dict(request.args, page=page_num)) }}">{{ page_num }}</a>
-                                    </li>
-                                    {% elif page_num == 4 and pagination.page > 5 %}
-                                    <li class="page-item disabled">
-                                        <span class="page-link">...</span>
-                                    </li>
-                                    {% elif page_num == pagination.total_pages - 3 and pagination.page < pagination.total_pages - 4 %}
-                                    <li class="page-item disabled">
-                                        <span class="page-link">...</span>
-                                    </li>
-                                    {% endif %}
-                                {% endfor %}
-                                
-                                {% if pagination.has_next %}
-                                <li class="page-item">
-                                    <a class="page-link" href="{{ url_for('logs', **dict(request.args, page=pagination.page+1)) }}">
-                                        Próximo <i class="fas fa-chevron-right"></i>
-                                    </a>
-                                </li>
-                                {% endif %}
-                            </ul>
-                        </nav>
-                        
-                        <div class="text-center mt-2">
-                            <small class="text-muted">
-                                Página {{ pagination.page }} de {{ pagination.total_pages }} 
-                                ({{ pagination.total_count }} registros)
-                            </small>
-                        </div>
+                            {% endfor %}
+                            
+                            {% if pagination.has_next %}
+                            <li class="page-item">
+                                <a class="page-link" href="{{ url_for('logs', **dict(request.args, page=pagination.page+1)) }}">
+                                    Próximo <i class="fas fa-chevron-right"></i>
+                                </a>
+                            </li>
+                            {% endif %}
+                        </ul>
+                    </nav>
+                    
+                    <div class="text-center mt-3">
+                        <small style="color: #a0a0a0;">
+                            Página {{ pagination.page }} de {{ pagination.total_pages }} 
+                            ({{ pagination.total_count }} registros)
+                        </small>
                     </div>
                 </div>
             </div>
@@ -266,8 +315,8 @@
         {% endif %}
     </div>
 
-    <!-- Loading Spinner -->
-    <div id="loadingSpinner" class="position-fixed top-50 start-50 translate-middle" style="display: none;">
+    <!-- Loading overlay -->
+    <div id="loadingOverlay" class="loading-overlay">
         <div class="spinner-border text-primary" role="status">
             <span class="visually-hidden">Carregando...</span>
         </div>
@@ -275,34 +324,31 @@
 
     <!-- Rodapé -->
     <footer class="footer mt-5">
-        <div class="footer-wave">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 100" preserveAspectRatio="none">
-                <path d="M0,50 Q300,0 600,50 T1200,50 L1200,100 L0,100 Z" fill="#D2AF52" opacity="0.3"></path>
-                <path d="M0,60 Q300,20 600,60 T1200,60 L1200,100 L0,100 Z" fill="#D2AF52" opacity="0.5"></path>
-                <path d="M0,70 Q300,40 600,70 T1200,70 L1200,100 L0,100 Z" fill="#D2AF52"></path>
-            </svg>
-        </div>
         <div class="footer-content">
             <div class="container">
-                <div class="row align-items-center">
-                    <div class="col-md-4 text-center text-md-start mb-3 mb-md-0">
+                <div class="row align-items-center justify-content-between">
+                    <div class="col-md-4 mb-3 mb-md-0">
                         <div class="footer-logo">
                             <i class="fas fa-history footer-icon"></i>
                             <h5 class="footer-title mb-0">Logs de Alterações</h5>
                         </div>
                     </div>
-                    <div class="col-md-4 text-center mb-3 mb-md-0">
-                        <div class="footer-stats">
-                            <div class="stat-item">
-                                <i class="fas fa-file-alt stat-icon"></i>
-                                <span class="stat-number">{{ pagination.total_count }}</span>
-                                <span class="stat-label">Logs</span>
+                    <div class="col-md-4 mb-3 mb-md-0 d-flex justify-content-center">
+                        <div class="header-stats">
+                            <div class="stat-card">
+                                <div class="stat-icon">
+                                    <i class="fas fa-file-alt"></i>
+                                </div>
+                                <div class="stat-content">
+                                    <div class="stat-value" style="color: #ffffff;">{{ pagination.total_count }}</div>
+                                    <div class="stat-label">Total de Logs</div>
+                                </div>
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-4 text-center text-md-end">
+                    <div class="col-md-4 mb-3 mb-md-0 d-flex justify-content-end">
                         <div class="footer-info">
-                            <p class="mb-0">
+                            <p class="mb-0" style="color: #ffffff;">
                                 <i class="fas fa-clock"></i>
                                 <span id="currentYear"></span>
                             </p>
