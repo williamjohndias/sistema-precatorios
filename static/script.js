@@ -1017,11 +1017,15 @@ function setupDynamicFilters() {
         
         // Construir URL com TODOS os filtros ativos (exceto o próprio campo)
         let url = `/api/get_filter_options?field=${fieldName}`;
+        const filterCount = Object.keys(activeFilters).length;
+        
         Object.keys(activeFilters).forEach(key => {
             if (key !== fieldName) {
                 url += `&active_filter_${key}=${encodeURIComponent(activeFilters[key])}`;
             }
         });
+        
+        console.log(`Atualizando filtro ${fieldName} com ${filterCount} filtros ativos:`, activeFilters);
         
         // Mostrar loading
         const loadingOption = select.querySelector('.loading-option');
@@ -1034,7 +1038,12 @@ function setupDynamicFilters() {
         }
         
         fetch(url)
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                return response.json();
+            })
             .then(data => {
                 const loading = select.querySelector('.loading-option');
                 if (loading) loading.remove();
@@ -1045,6 +1054,7 @@ function setupDynamicFilters() {
                 if (firstOption) select.appendChild(firstOption);
                 
                 if (data.success && data.values && data.values.length > 0) {
+                    console.log(`Filtro ${fieldName} atualizado: ${data.values.length} valores encontrados`);
                     data.values.forEach(value => {
                         const option = document.createElement('option');
                         option.value = value;
@@ -1059,10 +1069,12 @@ function setupDynamicFilters() {
                             select.value = currentValue;
                         } else {
                             select.value = ''; // Limpar se valor não existe mais
+                            console.log(`Valor ${currentValue} não existe mais para ${fieldName}, limpo`);
                         }
                     }
                 } else {
                     // Se não há valores, limpar seleção
+                    console.warn(`Nenhum valor encontrado para ${fieldName} com os filtros ativos`);
                     select.value = '';
                 }
             })
