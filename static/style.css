@@ -1,14 +1,15 @@
 /* Estilos para o Sistema de Precatórios */
 
 body {
-    background: #0a0e1a;
+    background: #0f1419;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
     min-height: 100vh;
     position: relative;
     overflow-x: hidden;
+    color: #e8e8e8;
 }
 
-/* Background animado com tema jurídico */
+/* Background animado profissional */
 body::before {
     content: '';
     position: fixed;
@@ -17,11 +18,11 @@ body::before {
     width: 100%;
     height: 100%;
     background: 
-        radial-gradient(circle at 20% 30%, rgba(212, 175, 55, 0.1) 0%, transparent 50%),
-        radial-gradient(circle at 80% 70%, rgba(212, 175, 55, 0.08) 0%, transparent 50%),
-        linear-gradient(135deg, #0a0e1a 0%, #1a1f2e 50%, #0f1419 100%);
+        radial-gradient(circle at 20% 30%, rgba(212, 175, 55, 0.08) 0%, transparent 40%),
+        radial-gradient(circle at 80% 70%, rgba(212, 175, 55, 0.06) 0%, transparent 40%),
+        linear-gradient(135deg, #0f1419 0%, #1a1f2e 50%, #141920 100%);
     z-index: -2;
-    animation: backgroundShift 20s ease-in-out infinite;
+    animation: backgroundShift 25s ease-in-out infinite;
 }
 
 body::after {
@@ -32,25 +33,26 @@ body::after {
     width: 100%;
     height: 100%;
     background-image: 
-        repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(212, 175, 55, 0.03) 2px, rgba(212, 175, 55, 0.03) 4px),
-        repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(212, 175, 55, 0.03) 2px, rgba(212, 175, 55, 0.03) 4px);
+        repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(212, 175, 55, 0.02) 3px, rgba(212, 175, 55, 0.02) 6px),
+        repeating-linear-gradient(90deg, transparent, transparent 3px, rgba(212, 175, 55, 0.02) 3px, rgba(212, 175, 55, 0.02) 6px);
     z-index: -1;
-    animation: gridMove 30s linear infinite;
+    animation: gridMove 40s linear infinite;
     pointer-events: none;
+    opacity: 0.5;
 }
 
 @keyframes backgroundShift {
     0%, 100% {
         background: 
-            radial-gradient(circle at 20% 30%, rgba(212, 175, 55, 0.1) 0%, transparent 50%),
-            radial-gradient(circle at 80% 70%, rgba(212, 175, 55, 0.08) 0%, transparent 50%),
-            linear-gradient(135deg, #0a0e1a 0%, #1a1f2e 50%, #0f1419 100%);
+            radial-gradient(circle at 20% 30%, rgba(212, 175, 55, 0.08) 0%, transparent 40%),
+            radial-gradient(circle at 80% 70%, rgba(212, 175, 55, 0.06) 0%, transparent 40%),
+            linear-gradient(135deg, #0f1419 0%, #1a1f2e 50%, #141920 100%);
     }
     50% {
         background: 
-            radial-gradient(circle at 80% 30%, rgba(212, 175, 55, 0.1) 0%, transparent 50%),
-            radial-gradient(circle at 20% 70%, rgba(212, 175, 55, 0.08) 0%, transparent 50%),
-            linear-gradient(135deg, #0f1419 0%, #1a1f2e 50%, #0a0e1a 100%);
+            radial-gradient(circle at 80% 30%, rgba(212, 175, 55, 0.08) 0%, transparent 40%),
+            radial-gradient(circle at 20% 70%, rgba(212, 175, 55, 0.06) 0%, transparent 40%),
+            linear-gradient(135deg, #141920 0%, #1a1f2e 50%, #0f1419 100%);
     }
 }
 
@@ -59,7 +61,7 @@ body::after {
         transform: translate(0, 0);
     }
     100% {
-        transform: translate(50px, 50px);
+        transform: translate(60px, 60px);
     }
 }
 
@@ -77,9 +79,9 @@ body::after {
 
 .justice-particle {
     position: absolute;
-    color: rgba(212, 175, 55, 0.15);
+    color: rgba(212, 175, 55, 0.12);
     font-size: 2rem;
-    animation: float 20s infinite ease-in-out;
+    animation: float 25s infinite ease-in-out;
     opacity: 0;
 }
 
@@ -118,64 +120,66 @@ body::after {
     padding-right: 1.5rem;
 }
 
-/* Estilos para formulários */
+/* Estilos para formulários modo escuro */
 .form-control, .form-select {
-    background: #ffffff;
-    border: 1px solid #ced4da;
-    color: #495057;
+    background: rgba(25, 30, 40, 0.8);
+    border: 1px solid rgba(212, 175, 55, 0.2);
+    color: #e8e8e8;
     transition: all 0.2s ease;
 }
 
 .form-control:focus, .form-select:focus {
-    background: #ffffff;
+    background: rgba(30, 35, 45, 0.9);
     border-color: #D4AF37;
-    color: #495057;
+    color: #ffffff;
     box-shadow: 0 0 0 0.2rem rgba(212, 175, 55, 0.25);
 }
 
 .form-control::placeholder {
-    color: #6c757d;
+    color: #888;
 }
 
 .form-label {
-    color: #495057;
+    color: #d0d0d0;
+    font-weight: 500;
 }
 
 .form-label.text-muted {
-    color: #6c757d !important;
+    color: #a0a0a0 !important;
 }
 
-/* Badges de informação */
+/* Badges de informação modo escuro */
 .info-badge {
-    background: #ffffff;
+    background: rgba(20, 25, 35, 0.85);
+    backdrop-filter: blur(10px);
     padding: 0.75rem 1.25rem;
-    border-radius: 8px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    border-radius: 10px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(212, 175, 55, 0.1);
     border-left: 3px solid #D4AF37;
-    border: 1px solid #e9ecef;
-    transition: all 0.2s ease;
-    color: #1a1a1a;
+    border: 1px solid rgba(212, 175, 55, 0.15);
+    transition: all 0.3s ease;
+    color: #ffffff;
 }
 
 .info-badge:hover {
-    box-shadow: 0 4px 15px rgba(212, 175, 55, 0.2);
-    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(212, 175, 55, 0.25), 0 0 0 1px rgba(212, 175, 55, 0.3);
+    transform: translateY(-2px);
     border-left-color: #F5E08A;
-    border-color: rgba(212, 175, 55, 0.4);
+    border-color: rgba(212, 175, 55, 0.3);
 }
 
 .info-badge .text-muted {
-    color: #6c757d !important;
+    color: #a0a0a0 !important;
 }
 
-/* Navbar com gradiente escuro estilo Precs */
+/* Navbar profissional escura */
 .precs-navbar {
-    background: rgba(10, 14, 26, 0.95);
-    backdrop-filter: blur(10px);
-    box-shadow: 0 4px 20px rgba(0,0,0,.5);
+    background: rgba(15, 20, 30, 0.98);
+    backdrop-filter: blur(20px);
+    box-shadow: 0 4px 24px rgba(0,0,0,.6), 0 0 0 1px rgba(212, 175, 55, 0.1);
     padding: 1rem 1.5rem;
     min-height: 75px;
-    border-bottom: 2px solid rgba(212, 175, 55, 0.3);
+    border-bottom: 1px solid rgba(212, 175, 55, 0.2);
     position: relative;
     z-index: 1000;
 }
@@ -261,33 +265,36 @@ body::after {
 }
 
 .card {
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-    border: 1px solid rgba(212, 175, 55, 0.2);
-    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(212, 175, 55, 0.1);
+    border: 1px solid rgba(212, 175, 55, 0.15);
+    border-radius: 16px;
     position: relative;
     z-index: 1;
-    background: #ffffff;
-    transition: all 0.3s ease;
-    border-top: 3px solid transparent;
+    background: rgba(20, 25, 35, 0.85);
+    backdrop-filter: blur(20px);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border-top: 2px solid transparent;
 }
 
 .card:hover {
-    box-shadow: 0 8px 30px rgba(212, 175, 55, 0.3);
-    transform: translateY(-2px);
+    box-shadow: 0 12px 40px rgba(212, 175, 55, 0.2), 0 0 0 1px rgba(212, 175, 55, 0.3);
+    transform: translateY(-4px);
     border-top-color: #D4AF37;
-    border-color: rgba(212, 175, 55, 0.4);
+    border-color: rgba(212, 175, 55, 0.3);
 }
 
 .card-header {
-    background: #ffffff;
-    border-bottom: 2px solid #e9ecef;
+    background: rgba(15, 20, 30, 0.6);
+    border-bottom: 1px solid rgba(212, 175, 55, 0.2);
     padding: 1.25rem 1.5rem;
-    border-radius: 12px 12px 0 0;
+    border-radius: 16px 16px 0 0;
 }
 
 .card-header h6 {
-    color: #1a1a1a;
+    color: #ffffff;
     font-size: 1rem;
+    font-weight: 600;
+    letter-spacing: 0.3px;
 }
 
 .table-responsive {
@@ -299,15 +306,15 @@ body::after {
 }
 
 .table th {
-    background: rgba(15, 20, 35, 0.95);
+    background: rgba(15, 20, 30, 0.95);
     color: #ffffff;
-    font-weight: 700;
+    font-weight: 600;
     font-size: 0.8125rem;
-    border-bottom: 3px solid #D4AF37;
+    border-bottom: 2px solid #D4AF37;
     padding: 1rem 0.75rem;
     text-transform: none;
     white-space: nowrap;
-    letter-spacing: 0.3px;
+    letter-spacing: 0.5px;
 }
 
 /* Cabeçalho sticky da tabela - dentro do container apenas */
@@ -315,54 +322,53 @@ body::after {
     position: sticky;
     top: 0;
     z-index: 10;
-    background-color: rgba(15, 20, 35, 0.95) !important;
-    backdrop-filter: blur(10px);
-    box-shadow: 0 2px 8px rgba(0,0,0,.3);
+    background-color: rgba(15, 20, 30, 0.98) !important;
+    backdrop-filter: blur(20px);
+    box-shadow: 0 4px 12px rgba(0,0,0,.4);
 }
 
 .table td {
-    padding: 0.75rem;
+    padding: 0.875rem 0.75rem;
     vertical-align: middle;
-    border-color: rgba(212, 175, 55, 0.1);
+    border-color: rgba(212, 175, 55, 0.08);
     font-size: 0.875rem;
-    color: #e0e0e0;
+    color: #e8e8e8;
 }
 
-.table-striped > tbody > tr:nth-of-type(odd) > td {
-    background: rgba(20, 25, 40, 0.5);
-}
+/* Removido estilo zebra - todas as linhas com mesmo fundo */
 
 .table-hover tbody tr:hover {
-    background: rgba(212, 175, 55, 0.15);
+    background: rgba(212, 175, 55, 0.12);
     transition: all 0.2s ease;
 }
 
 .table {
-    color: #e0e0e0;
+    color: #e8e8e8;
+    border-color: rgba(212, 175, 55, 0.1);
 }
 
-/* Estilos para campos editáveis */
+/* Estilos para campos editáveis modo escuro */
 .editable-field {
-    border: 1px solid rgba(212, 175, 55, 0.3);
-    border-radius: 0.25rem;
-    padding: 0.375rem 0.75rem;
+    border: 1px solid rgba(212, 175, 55, 0.25);
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
     font-size: 0.875rem;
-    transition: all 0.15s ease-in-out;
-    background: rgba(20, 25, 40, 0.8);
-    color: #e0e0e0;
+    transition: all 0.2s ease;
+    background: rgba(25, 30, 40, 0.7);
+    color: #e8e8e8;
 }
 
 .editable-field:focus {
     border-color: #D4AF37;
-    box-shadow: 0 0 0 0.2rem rgba(212, 175, 55, 0.35);
+    box-shadow: 0 0 0 0.2rem rgba(212, 175, 55, 0.3);
     outline: 0;
-    background: rgba(25, 30, 45, 0.9);
+    background: rgba(30, 35, 45, 0.9);
     color: #ffffff;
 }
 
 .editable-field.modified {
     border-color: #D4AF37;
-    background: linear-gradient(135deg, rgba(212, 175, 55, 0.2) 0%, rgba(184, 134, 11, 0.15) 100%);
+    background: linear-gradient(135deg, rgba(212, 175, 55, 0.18) 0%, rgba(184, 134, 11, 0.12) 100%);
 }
 
 .editable-field.error {
@@ -372,12 +378,11 @@ body::after {
 
 /* Estilos para campos não editáveis */
 .form-control-plaintext {
-    color: #e0e0e0;
-    padding: 0.375rem 0.75rem;
+    color: #e8e8e8;
+    padding: 0.5rem 0.75rem;
     font-size: 0.875rem;
     background-color: transparent;
     border: none;
-    border-radius: 0.25rem;
 }
 
 /* Loading overlay */
@@ -1203,7 +1208,7 @@ input[list]:hover {
 
 .footer-title {
     font-weight: 600;
-    color: #fff;
+    color: #ffffff;
     margin: 0;
 }
 
