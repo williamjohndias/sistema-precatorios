@@ -456,12 +456,13 @@ class DatabaseManager:
             timeout = 15000 if field == 'organizacao' else 8000  # Mais tempo para organização
             
             # Para campos pequenos, SEM limite (carregar todos)
-            # Para organização, usar limite maior inicialmente
+            # Para organização, SEM limite quando limit_count é None (carregar TODAS)
             if limit_count is None:
                 if is_small_field:
                     limit_count = 1000  # Praticamente sem limite para campos pequenos
                 else:
-                    limit_count = 200  # Limite maior para organização
+                    # Organização: sem limite quando None (carregar TODAS)
+                    limit_count = None  # Manter None para carregar todas
             
             try:
                 self.cursor.execute(f"SET statement_timeout TO {timeout}")
@@ -479,10 +480,10 @@ class DatabaseManager:
                 for filter_field, filter_value in active_filters.items():
                     # Não aplicar filtro no próprio campo
                     if filter_field != field and filter_value:
-                        # Campos de texto: usar ILIKE para busca parcial
+                        # Campos de texto: usar igualdade exata para filtros dinâmicos (mais preciso)
                         if filter_field in ['organizacao', 'precatorio', 'tribunal', 'natureza', 'situacao', 'regime', 'prioridade']:
-                            where_conditions.append(f"{filter_field} ILIKE %s")
-                            params.append(f"%{filter_value}%")
+                            where_conditions.append(f"{filter_field} = %s")
+                            params.append(filter_value)
                         # Campos numéricos: igualdade exata
                         elif filter_field in ['ordem', 'ano_orc']:
                             try:
@@ -523,14 +524,25 @@ class DatabaseManager:
                 )
                 # Sem LIMIT para campos pequenos - queremos TODOS os valores dinâmicos
             else:
-                # Para organização, pegar mais linhas e filtrar únicos em Python
-                query = (
-                    f"SELECT {field} "
-                    f"FROM {TABLE_NAME} "
-                    f"WHERE {where_clause} "
-                    f"ORDER BY {field} "
-                    f"LIMIT {limit_count * 3}"  # Pegar 3x mais para garantir únicos
-                )
+                # Para organização, usar GROUP BY quando não há limite (mais eficiente)
+                if limit_count is None:
+                    # Sem limite: usar GROUP BY para carregar TODAS as organizações
+                    query = (
+                        f"SELECT {field} "
+                        f"FROM {TABLE_NAME} "
+                        f"WHERE {where_clause} "
+                        f"GROUP BY {field} "
+                        f"ORDER BY {field}"
+                    )
+                else:
+                    # Com limite: pegar mais linhas e filtrar únicos em Python
+                    query = (
+                        f"SELECT {field} "
+                        f"FROM {TABLE_NAME} "
+                        f"WHERE {where_clause} "
+                        f"ORDER BY {field} "
+                        f"LIMIT {limit_count * 3}"  # Pegar 3x mais para garantir únicos
+                    )
             
             logger.info(f"Executando query DINÂMICA para {field} (limite: {limit_count}, busca: {search_term}, filtros ativos: {len(active_filters) if active_filters else 0}, campo pequeno: {is_small_field})...")
             start_time = time.time()
@@ -538,9 +550,9 @@ class DatabaseManager:
             all_results = self.cursor.fetchall()
             query_time = time.time() - start_time
             
-            # Para campos pequenos, já vem único do GROUP BY
-            # Para organização, filtrar únicos em Python
-            if is_small_field:
+            # Para campos pequenos e organização sem limite, já vem único do GROUP BY
+            # Para organização com limite, filtrar únicos em Python
+            if is_small_field or (field == 'organizacao' and limit_count is None):
                 values = [str(row[field]) for row in all_results if row[field] is not None]
             else:
                 # Extrair valores únicos em Python
@@ -551,7 +563,7 @@ class DatabaseManager:
                     if value and value not in seen:
                         seen.add(value)
                         values.append(value)
-                        if len(values) >= limit_count:
+                        if limit_count and len(values) >= limit_count:
                             break
             
             logger.info(f"Query para {field} executada em {query_time:.2f}s, retornou {len(values)} valores")
@@ -1296,9 +1308,8 @@ def index():
         if 'esta_na_ordem' not in filters:
             filters['esta_na_ordem'] = 'true'
         
-        # CARREGAR TODOS OS FILTROS NO SERVIDOR (FIXO) - sem AJAX
-        # Isso garante que todos os valores estejam disponíveis imediatamente
-        logger.info("Carregando TODOS os valores dos filtros no servidor...")
+        # CARREGAR FILTROS: Organização carrega TODAS, outros filtros são dinâmicos baseados em filtros ativos
+        logger.info("Carregando valores dos filtros no servidor...")
         
         filter_values = {
             'organizacao': [],
@@ -1310,18 +1321,32 @@ def index():
             'ano_orc': []
         }
         
-        # Carregar TODOS os filtros usando cache (muito rápido)
-        filter_fields = ['organizacao', 'prioridade', 'tribunal', 'natureza', 'situacao', 'regime', 'ano_orc']
-        for field in filter_fields:
+        # ORGANIZAÇÃO: Carregar TODAS (sem limite) - sempre mostra todas as organizações do banco
+        try:
+            filter_values['organizacao'] = db_manager.get_filter_values('organizacao', use_cache=True, limit_count=None, active_filters=None)
+            logger.info(f"Organização carregada: {len(filter_values['organizacao'])} valores (TODAS)")
+        except Exception as e:
+            logger.warning(f"Erro ao carregar organização: {e}")
+            filter_values['organizacao'] = []
+        
+        # OUTROS FILTROS: Carregar baseado em filtros ativos (dinâmico)
+        # Se houver filtro de organização aplicado, outros filtros mostram apenas valores dessa organização
+        other_fields = ['prioridade', 'tribunal', 'natureza', 'situacao', 'regime', 'ano_orc']
+        active_filters_for_dynamic = {}
+        if filters.get('organizacao'):
+            active_filters_for_dynamic['organizacao'] = filters['organizacao']
+        
+        for field in other_fields:
             try:
-                # Para organização, usar limite maior (200)
-                # Para outros campos, carregar todos (sem limite)
-                if field == 'organizacao':
-                    filter_values[field] = db_manager.get_filter_values(field, use_cache=True, limit_count=200)
-                else:
-                    # Campos pequenos: carregar todos (sem limite)
-                    filter_values[field] = db_manager.get_filter_values(field, use_cache=True, limit_count=None)
-                logger.info(f"Filtro {field} carregado: {len(filter_values[field])} valores")
+                # Se há filtro de organização, usar ele para filtrar dinamicamente
+                # Caso contrário, carregar todos os valores
+                filter_values[field] = db_manager.get_filter_values(
+                    field, 
+                    use_cache=not bool(active_filters_for_dynamic), 
+                    limit_count=None,
+                    active_filters=active_filters_for_dynamic if active_filters_for_dynamic else None
+                )
+                logger.info(f"Filtro {field} carregado: {len(filter_values[field])} valores (dinâmico: {bool(active_filters_for_dynamic)})")
             except Exception as e:
                 logger.warning(f"Erro ao carregar {field}: {e}")
                 filter_values[field] = []

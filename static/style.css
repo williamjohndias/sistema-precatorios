@@ -1,8 +1,12 @@
 /* Estilos para o Sistema de Precatórios */
 
 body {
-    background-color: #F5E08A; /* fundo claro amarelo dourado */
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f5f7fa;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+.navbar {
+    box-shadow: 0 2px 4px rgba(0,0,0,.08);
 }
 
 .navbar-brand {
@@ -10,8 +14,15 @@ body {
 }
 
 .card {
-    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
-    border: 1px solid rgba(0, 0, 0, 0.125);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    border: none;
+    border-radius: 8px;
+}
+
+.card-header {
+    background-color: #fff;
+    border-bottom: 1px solid #e9ecef;
+    padding: 1rem 1.25rem;
 }
 
 .table-responsive {
@@ -23,14 +34,13 @@ body {
 }
 
 .table th {
-    background-color: #343a40;
-    color: white;
+    background-color: #f8f9fa;
+    color: #495057;
     font-weight: 600;
-    text-transform: uppercase;
-    font-size: 0.875rem;
-    letter-spacing: 0.5px;
-    border: none;
+    font-size: 0.8125rem;
+    border-bottom: 2px solid #dee2e6;
     padding: 0.75rem 0.5rem;
+    text-transform: none;
 }
 
 .table td {
@@ -44,7 +54,7 @@ body {
 }
 
 .table-hover tbody tr:hover {
-    background-color: rgba(210, 175, 82, 0.15); /* #D2AF52 */
+    background-color: #f8f9fa;
 }
 
 /* Estilos para campos editáveis */

@@ -32,61 +32,50 @@
         </div>
     </nav>
 
-    <div class="container-fluid mt-3">
+    <div class="container-fluid mt-4">
         <!-- Alertas -->
         <div id="alertContainer"></div>
 
-        <!-- Informações da tabela -->
-        <div class="row mb-3">
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-body">
-                        <!-- <h5 class="card-title">
-                            <i class="fas fa-table me-2"></i>Tabela: {{ table_name }}
-                        </h5> -->
-                        <p class="card-text">
-                            <span class="badge bg-primary">{{ pagination.total_count }} registros totais</span>
-                            <span class="badge bg-info ms-2">{{ precatorios|length }} nesta página</span>
-                            <span class="badge bg-success ms-2">Edição inline habilitada</span>
-                        </p>
-                    </div>
-                </div>
+        <!-- Informações resumidas -->
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <div>
+                <span class="text-muted small">{{ pagination.total_count }} registros</span>
+                <span class="text-muted small ms-2">•</span>
+                <span class="text-muted small ms-2">{{ precatorios|length }} nesta página</span>
             </div>
         </div>
 
         <!-- Filtros -->
-        <div class="row mb-3">
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header">
-                        <h6 class="mb-0">
-                            <i class="fas fa-filter me-2"></i>Filtros
-                        </h6>
-                    </div>
-                    <div class="card-body">
-                        <form method="GET" id="filterForm" onsubmit="showFilterLoading()">
-                            <div class="row">
-                                <div class="col-md-3 mb-2">
-                                    <label class="form-label">Precatório</label>
-                                    <input type="text" class="form-control form-control-sm" 
-                                           name="filter_precatorio" 
-                                           value="{{ filters.get('precatorio', '') }}"
-                                           placeholder="Filtrar por precatório">
-                                </div>
-                                <div class="col-md-3 mb-2">
-                                    <label class="form-label">Ordem</label>
-                                    <input type="text" class="form-control form-control-sm" 
-                                           name="filter_ordem" 
-                                           value="{{ filters.get('ordem', '') }}"
-                                           placeholder="Filtrar por ordem">
-                                </div>
-                                <div class="col-md-3 mb-2">
-                                    <label class="form-label">Organização</label>
+        <div class="card mb-4 shadow-sm">
+            <div class="card-header bg-white border-bottom">
+                <h6 class="mb-0 fw-semibold">
+                    <i class="fas fa-filter me-2 text-primary"></i>Filtros
+                </h6>
+            </div>
+            <div class="card-body">
+                <form method="GET" id="filterForm" onsubmit="showFilterLoading()">
+                    <div class="row g-3">
+                        <div class="col-md-2">
+                            <label class="form-label small fw-semibold text-muted mb-1">Precatório</label>
+                            <input type="text" class="form-control form-control-sm" 
+                                   name="filter_precatorio" 
+                                   value="{{ filters.get('precatorio', '') }}"
+                                   placeholder="Buscar...">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small fw-semibold text-muted mb-1">Ordem</label>
+                            <input type="text" class="form-control form-control-sm" 
+                                   name="filter_ordem" 
+                                   value="{{ filters.get('ordem', '') }}"
+                                   placeholder="Buscar...">
+                        </div>
+                                <div class="col-md-4">
+                                    <label class="form-label small fw-semibold text-muted mb-1">Organização</label>
                                     <div class="searchable-select-wrapper">
                                         <input type="text" 
                                                class="form-control form-control-sm searchable-select-input" 
                                                id="filter_organizacao_input"
-                                               placeholder="Clique para buscar organização..."
+                                               placeholder="Selecione uma organização..."
                                                autocomplete="off"
                                                value="{{ filters.get('organizacao', '') if filters.get('organizacao') else '' }}">
                                         <input type="hidden" 
@@ -98,10 +87,10 @@
                                                 <input type="text" 
                                                        class="form-control form-control-sm" 
                                                        id="organizacao_search"
-                                                       placeholder="Buscar organização..."
+                                                       placeholder="Digite para buscar..."
                                                        autocomplete="off">
                                             </div>
-                                            <div class="searchable-select-options" id="organizacao_options">
+                                            <div class="searchable-select-options" id="organizacao_options" style="max-height: 300px; overflow-y: auto;">
                                                 <div class="searchable-select-option" data-value="">Todas as organizações</div>
                                                 {% if filter_values.organizacao %}
                                                     {% for value in filter_values.organizacao %}
@@ -116,96 +105,94 @@
                                         </div>
                                     </div>
                                 </div>
-                                <div class="col-md-3 mb-2">
-                                    <label class="form-label">Prioridade</label>
-                                    <select class="form-control form-control-sm" name="filter_prioridade">
-                                        <option value="">Todas as prioridades</option>
+                                <div class="col-md-2">
+                                    <label class="form-label small fw-semibold text-muted mb-1">Prioridade</label>
+                                    <select class="form-select form-select-sm" name="filter_prioridade">
+                                        <option value="">Todas</option>
                                         {% for value in filter_values.prioridade %}
                                         <option value="{{ value }}" {% if filters.get('prioridade') == value %}selected{% endif %}>{{ value }}</option>
                                         {% endfor %}
                                     </select>
                                 </div>
-                                <div class="col-md-3 mb-2">
-                                    <label class="form-label">Natureza</label>
-                                    <select class="form-control form-control-sm" name="filter_natureza">
-                                        <option value="">Todas as naturezas</option>
+                                <div class="col-md-2">
+                                    <label class="form-label small fw-semibold text-muted mb-1">Natureza</label>
+                                    <select class="form-select form-select-sm" name="filter_natureza">
+                                        <option value="">Todas</option>
                                         {% for value in filter_values.natureza %}
                                         <option value="{{ value }}" {% if filters.get('natureza') == value %}selected{% endif %}>{{ value }}</option>
                                         {% endfor %}
                                     </select>
                                 </div>
-                                <div class="col-md-3 mb-2">
-                                    <label class="form-label">Tribunal</label>
-                                    <select class="form-control form-control-sm" name="filter_tribunal">
-                                        <option value="">Todos os tribunais</option>
+                                <div class="col-md-2">
+                                    <label class="form-label small fw-semibold text-muted mb-1">Tribunal</label>
+                                    <select class="form-select form-select-sm" name="filter_tribunal">
+                                        <option value="">Todos</option>
                                         {% for value in filter_values.tribunal %}
                                         <option value="{{ value }}" {% if filters.get('tribunal') == value %}selected{% endif %}>{{ value }}</option>
                                         {% endfor %}
                                     </select>
                                 </div>
-                                <div class="col-md-3 mb-2">
-                                    <label class="form-label">Situação</label>
-                                    <select class="form-control form-control-sm" name="filter_situacao">
-                                        <option value="">Todas as situações</option>
+                                <div class="col-md-2">
+                                    <label class="form-label small fw-semibold text-muted mb-1">Situação</label>
+                                    <select class="form-select form-select-sm" name="filter_situacao">
+                                        <option value="">Todas</option>
                                         {% for value in filter_values.situacao %}
                                         <option value="{{ value }}" {% if filters.get('situacao') == value %}selected{% endif %}>{{ value }}</option>
                                         {% endfor %}
                                     </select>
                                 </div>
-                                <div class="col-md-3 mb-2">
-                                    <label class="form-label">Ano Orçamentário</label>
-                                    <select class="form-control form-control-sm" name="filter_ano_orc">
-                                        <option value="">Todos os anos</option>
+                                <div class="col-md-2">
+                                    <label class="form-label small fw-semibold text-muted mb-1">Ano</label>
+                                    <select class="form-select form-select-sm" name="filter_ano_orc">
+                                        <option value="">Todos</option>
                                         {% for value in filter_values.ano_orc %}
                                         <option value="{{ value }}" {% if filters.get('ano_orc') == value %}selected{% endif %}>{{ value }}</option>
                                         {% endfor %}
                                     </select>
                                 </div>
-                                <div class="col-md-3 mb-2">
-                                    <label class="form-label">Regime</label>
-                                    <select class="form-control form-control-sm" name="filter_regime">
-                                        <option value="">Todos os regimes</option>
+                                <div class="col-md-2">
+                                    <label class="form-label small fw-semibold text-muted mb-1">Regime</label>
+                                    <select class="form-select form-select-sm" name="filter_regime">
+                                        <option value="">Todos</option>
                                         {% for value in filter_values.regime %}
                                         <option value="{{ value }}" {% if filters.get('regime') == value %}selected{% endif %}>{{ value }}</option>
                                         {% endfor %}
                                     </select>
                                 </div>
-                                <div class="col-md-6 mb-2">
-                                    <label class="form-label">Valor até R$ (máx: {{ max_valor | currency_br }})</label>
+                            </div>
+                            <div class="row g-3 mt-1">
+                                <div class="col-md-3">
+                                    <label class="form-label small fw-semibold text-muted mb-1">Valor até</label>
                                     <input type="number" class="form-control form-control-sm"
                                            name="filter_valor"
                                            value="{{ filters.get('valor', '') }}"
-                                           placeholder="Filtrar até este valor"
+                                           placeholder="R$ 0,00"
                                            min="0"
                                            max="{{ max_valor or 0 }}"
                                            step="0.01">
-                                    <small class="form-text text-muted">Digite um valor maior que 0 para filtrar</small>
                                 </div>
-                                <div class="col-md-3 mb-2">
-                                    <label class="form-label">No Pipe</label>
-                                    <select class="form-control form-control-sm" name="filter_presenca_no_pipe">
+                                <div class="col-md-2">
+                                    <label class="form-label small fw-semibold text-muted mb-1">No Pipe</label>
+                                    <select class="form-select form-select-sm" name="filter_presenca_no_pipe">
                                         <option value="">Todos</option>
                                         <option value="true" {% if filters.get('presenca_no_pipe') == 'true' %}selected{% endif %}>Sim</option>
                                         <option value="false" {% if filters.get('presenca_no_pipe') == 'false' %}selected{% endif %}>Não</option>
                                     </select>
                                 </div>
-                                <div class="col-md-3 mb-2">
-                                    <label class="form-label">Esta na Ordem</label>
-                                    <select class="form-control form-control-sm" name="filter_esta_na_ordem">
+                                <div class="col-md-2">
+                                    <label class="form-label small fw-semibold text-muted mb-1">Na Ordem</label>
+                                    <select class="form-select form-select-sm" name="filter_esta_na_ordem">
                                         <option value="">Todos</option>
                                         <option value="true" {% if filters.get('esta_na_ordem') == 'true' %}selected{% endif %}>Sim</option>
                                         <option value="false" {% if filters.get('esta_na_ordem') == 'false' %}selected{% endif %}>Não</option>
                                     </select>
-                                    <small class="form-text text-muted">Padrão: Apenas na ordem</small>
                                 </div>
-                            </div>
-                            <div class="row mt-3">
-                                <div class="col-12 text-center">
-                                    <button type="submit" class="btn btn-filter">
-                                        <i class="fas fa-search me-2"></i>Aplicar Filtros
+                                <div class="col-md-5 d-flex align-items-end gap-2">
+                                    <button type="submit" class="btn btn-sm btn-primary">
+                                        <i class="fas fa-search me-1"></i>Filtrar
                                     </button>
-                                    <a href="{{ url_for('index') }}" class="btn btn-filter-clear ms-2">
-                                        <i class="fas fa-redo me-2"></i>Limpar Filtros
+                                    <a href="{{ url_for('index') }}" class="btn btn-sm btn-outline-secondary">
+                                        <i class="fas fa-times me-1"></i>Limpar
                                     </a>
                                 </div>
                             </div>
