@@ -419,13 +419,17 @@ class DatabaseManager:
                 }
             }
     
-    def get_filter_values(self, field: str, use_cache: bool = True, limit_count: int = None, search_term: str = None) -> List[str]:
-        """Obtém valores únicos para um campo específico - ESTRATÉGIA OTIMIZADA"""
+    def get_filter_values(self, field: str, use_cache: bool = True, limit_count: int = None, search_term: str = None, active_filters: Dict[str, str] = None) -> List[str]:
+        """Obtém valores únicos para um campo específico - DINÂMICO baseado em filtros ativos"""
         global _filter_values_cache, _filter_cache_timestamp
         
         # Campos pequenos: carregar TODOS de uma vez (prioridade, tribunal, natureza, regime, situacao)
         small_fields = ['prioridade', 'tribunal', 'natureza', 'regime', 'situacao', 'ano_orc']
         is_small_field = field in small_fields
+        
+        # Se há filtros ativos, não usar cache (valores são dinâmicos)
+        if active_filters:
+            use_cache = False
         
         # Verificar cache primeiro (aumentado para 1 hora para melhor performance)
         if use_cache:
@@ -466,56 +470,69 @@ class DatabaseManager:
             except Exception:
                 pass
             
+            # Construir WHERE clause com filtros ativos (dinâmico)
+            where_conditions = ["esta_na_ordem = TRUE", f"{field} IS NOT NULL"]
+            params = []
+            
+            # Aplicar filtros ativos (exceto o próprio campo que estamos buscando)
+            if active_filters:
+                for filter_field, filter_value in active_filters.items():
+                    # Não aplicar filtro no próprio campo
+                    if filter_field != field and filter_value:
+                        # Campos de texto: usar ILIKE para busca parcial
+                        if filter_field in ['organizacao', 'precatorio', 'tribunal', 'natureza', 'situacao', 'regime', 'prioridade']:
+                            where_conditions.append(f"{filter_field} ILIKE %s")
+                            params.append(f"%{filter_value}%")
+                        # Campos numéricos: igualdade exata
+                        elif filter_field in ['ordem', 'ano_orc']:
+                            try:
+                                where_conditions.append(f"{filter_field} = %s")
+                                params.append(int(filter_value))
+                            except (ValueError, TypeError):
+                                pass
+                        # Campos booleanos
+                        elif filter_field == 'esta_na_ordem':
+                            where_conditions.append(f"{filter_field} = %s")
+                            params.append(filter_value.lower() == 'true')
+                        # Campo valor (já tratado separadamente)
+                        elif filter_field == 'valor':
+                            try:
+                                where_conditions.append(f"{filter_field} <= %s")
+                                params.append(float(filter_value))
+                            except (ValueError, TypeError):
+                                pass
+            
+            # Adicionar busca por termo se houver
+            if search_term:
+                search_pattern = f"%{search_term}%"
+                where_conditions.append(f"{field} ILIKE %s")
+                params.append(search_pattern)
+            
+            where_clause = " AND ".join(where_conditions)
+            
             # ESTRATÉGIA OTIMIZADA: usar GROUP BY para campos pequenos (mais rápido)
             # Para organização, usar ORDER BY + LIMIT e filtrar únicos em Python
-            if search_term:
-                # Se há busca, usar ILIKE
-                search_pattern = f"%{search_term}%"
-                if is_small_field:
-                    # Para campos pequenos, usar GROUP BY (mais eficiente)
-                    query = (
-                        f"SELECT {field} "
-                        f"FROM {TABLE_NAME} "
-                        f"WHERE esta_na_ordem = TRUE AND {field} IS NOT NULL "
-                        f"AND {field} ILIKE %s "
-                        f"GROUP BY {field} "
-                        f"ORDER BY {field} "
-                        f"LIMIT {limit_count}"
-                    )
-                else:
-                    # Para organização, pegar mais linhas e filtrar únicos
-                    query = (
-                        f"SELECT {field} "
-                        f"FROM {TABLE_NAME} "
-                        f"WHERE esta_na_ordem = TRUE AND {field} IS NOT NULL "
-                        f"AND {field} ILIKE %s "
-                        f"ORDER BY {field} "
-                        f"LIMIT {limit_count * 5}"  # Pegar 5x mais para garantir únicos
-                    )
-                params = [search_pattern]
+            if is_small_field:
+                # Para campos pequenos, usar GROUP BY (muito mais rápido que DISTINCT)
+                query = (
+                    f"SELECT {field} "
+                    f"FROM {TABLE_NAME} "
+                    f"WHERE {where_clause} "
+                    f"GROUP BY {field} "
+                    f"ORDER BY {field}"
+                )
+                # Sem LIMIT para campos pequenos - queremos TODOS os valores dinâmicos
             else:
-                if is_small_field:
-                    # Para campos pequenos, usar GROUP BY (muito mais rápido que DISTINCT)
-                    query = (
-                        f"SELECT {field} "
-                        f"FROM {TABLE_NAME} "
-                        f"WHERE esta_na_ordem = TRUE AND {field} IS NOT NULL "
-                        f"GROUP BY {field} "
-                        f"ORDER BY {field}"
-                    )
-                    # Sem LIMIT para campos pequenos - queremos TODOS
-                else:
-                    # Para organização, pegar mais linhas e filtrar únicos em Python
-                    query = (
-                        f"SELECT {field} "
-                        f"FROM {TABLE_NAME} "
-                        f"WHERE esta_na_ordem = TRUE AND {field} IS NOT NULL "
-                        f"ORDER BY {field} "
-                        f"LIMIT {limit_count * 3}"  # Pegar 3x mais para garantir únicos
-                    )
-                params = []
+                # Para organização, pegar mais linhas e filtrar únicos em Python
+                query = (
+                    f"SELECT {field} "
+                    f"FROM {TABLE_NAME} "
+                    f"WHERE {where_clause} "
+                    f"ORDER BY {field} "
+                    f"LIMIT {limit_count * 3}"  # Pegar 3x mais para garantir únicos
+                )
             
-            logger.info(f"Executando query otimizada para {field} (limite: {limit_count}, busca: {search_term}, campo pequeno: {is_small_field})...")
+            logger.info(f"Executando query DINÂMICA para {field} (limite: {limit_count}, busca: {search_term}, filtros ativos: {len(active_filters) if active_filters else 0}, campo pequeno: {is_small_field})...")
             start_time = time.time()
             self.cursor.execute(query, params)
             all_results = self.cursor.fetchall()
@@ -1768,7 +1785,7 @@ def admin_apply_indexes():
 
 @app.route('/api/get_filter_options', methods=['GET'])
 def get_filter_options():
-    """API para carregar opções de filtro sob demanda (AJAX) - ESTRATÉGIA REVOLUCIONÁRIA"""
+    """API para carregar opções de filtro DINÂMICAS baseadas em filtros ativos"""
     try:
         if not db_manager.connect():
             return jsonify({'success': False, 'message': 'Erro ao conectar com banco'}), 500
@@ -1785,10 +1802,18 @@ def get_filter_options():
         if not search_term:
             search_term = None
         
-        # Usar nova estratégia com busca incremental
-        values = db_manager.get_filter_values(field, use_cache=True, limit_count=limit_count, search_term=search_term)
+        # Obter filtros ativos da query string (para filtros dinâmicos)
+        active_filters = {}
+        filter_fields = ['organizacao', 'prioridade', 'tribunal', 'natureza', 'situacao', 'regime', 'ano_orc', 'ordem', 'precatorio', 'valor', 'esta_na_ordem']
+        for filter_field in filter_fields:
+            filter_value = request.args.get(f'active_filter_{filter_field}', '').strip()
+            if filter_value:
+                active_filters[filter_field] = filter_value
         
-        logger.info(f"API: Retornando {len(values)} valores para {field} (limite: {limit_count}, busca: {search_term})")
+        # Usar estratégia dinâmica com filtros ativos
+        values = db_manager.get_filter_values(field, use_cache=False, limit_count=limit_count, search_term=search_term, active_filters=active_filters if active_filters else None)
+        
+        logger.info(f"API DINÂMICA: Retornando {len(values)} valores para {field} (filtros ativos: {len(active_filters)})")
         
         return jsonify({
             'success': True,

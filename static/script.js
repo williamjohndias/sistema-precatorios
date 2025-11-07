@@ -16,8 +16,8 @@ document.addEventListener('DOMContentLoaded', function() {
     setupDatalistClickable();
     reconfigureSearchableSelect = setupSearchableSelect();
     
-    // Filtros já são carregados no servidor - não precisa carregar via AJAX
-    // Apenas configurar busca incremental para organização (quando usuário digita)
+    // Configurar atualização dinâmica dos filtros
+    setupDynamicFilters();
 });
 
 // Inicializar tabela
@@ -964,8 +964,168 @@ function loadDropdownOptions(fields) {
     loadNext();
 }
 
-// Filtros são carregados no servidor - não precisa carregar via AJAX
-// Esta função foi removida pois os valores já vêm do servidor
+// Configurar filtros dinâmicos que se atualizam baseados em filtros ativos
+function setupDynamicFilters() {
+    // Obter todos os campos de filtro
+    const filterInputs = document.querySelectorAll('input[name^="filter_"], select[name^="filter_"]');
+    const organizacaoInput = document.getElementById('filter_organizacao_hidden');
+    
+    // Função para obter filtros ativos atuais
+    function getActiveFilters() {
+        const active = {};
+        filterInputs.forEach(input => {
+            const fieldName = input.name.replace('filter_', '');
+            const value = input.value ? input.value.trim() : '';
+            if (value) {
+                active[fieldName] = value;
+            }
+        });
+        // Adicionar organização se houver
+        if (organizacaoInput && organizacaoInput.value) {
+            active.organizacao = organizacaoInput.value.trim();
+        }
+        return active;
+    }
+    
+    // Função para atualizar um filtro específico baseado em filtros ativos
+    function updateFilter(fieldName, skipField = null) {
+        if (fieldName === skipField) return;
+        
+        const activeFilters = getActiveFilters();
+        const limit = fieldName === 'organizacao' ? 200 : null;
+        const limitParam = limit !== null ? `&limit=${limit}` : '';
+        
+        // Construir URL com filtros ativos
+        let url = `/api/get_filter_options?field=${fieldName}${limitParam}`;
+        Object.keys(activeFilters).forEach(key => {
+            if (key !== fieldName) {
+                url += `&active_filter_${key}=${encodeURIComponent(activeFilters[key])}`;
+            }
+        });
+        
+        // Atualizar dropdown/select
+        if (fieldName === 'organizacao') {
+            const optionsContainer = document.getElementById('organizacao_options');
+            if (optionsContainer) {
+                // Mostrar loading
+                const loading = optionsContainer.querySelector('.loading-indicator');
+                if (!loading) {
+                    const loadingDiv = document.createElement('div');
+                    loadingDiv.className = 'searchable-select-option loading-indicator';
+                    loadingDiv.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Atualizando...';
+                    loadingDiv.style.textAlign = 'center';
+                    loadingDiv.style.color = '#6c757d';
+                    optionsContainer.appendChild(loadingDiv);
+                }
+                
+                fetch(url)
+                    .then(response => response.json())
+                    .then(data => {
+                        const loading = optionsContainer.querySelector('.loading-indicator');
+                        if (loading) loading.remove();
+                        
+                        const firstOption = optionsContainer.querySelector('.searchable-select-option[data-value=""]');
+                        optionsContainer.innerHTML = '';
+                        if (firstOption) optionsContainer.appendChild(firstOption);
+                        
+                        if (data.success && data.values && data.values.length > 0) {
+                            data.values.forEach(value => {
+                                const option = document.createElement('div');
+                                option.className = 'searchable-select-option';
+                                option.dataset.value = value;
+                                option.textContent = value;
+                                optionsContainer.appendChild(option);
+                            });
+                        }
+                        
+                        if (reconfigureSearchableSelect) {
+                            reconfigureSearchableSelect();
+                        }
+                    })
+                    .catch(error => {
+                        console.error(`Erro ao atualizar filtro ${fieldName}:`, error);
+                    });
+            }
+        } else {
+            const select = document.querySelector(`select[name="filter_${fieldName}"]`);
+            if (select) {
+                const currentValue = select.value;
+                const loadingOption = select.querySelector('.loading-option');
+                if (!loadingOption) {
+                    const loading = document.createElement('option');
+                    loading.textContent = 'Atualizando...';
+                    loading.disabled = true;
+                    loading.className = 'loading-option';
+                    select.appendChild(loading);
+                }
+                
+                fetch(url)
+                    .then(response => response.json())
+                    .then(data => {
+                        const loading = select.querySelector('.loading-option');
+                        if (loading) loading.remove();
+                        
+                        // Limpar opções (exceto a primeira)
+                        const firstOption = select.firstElementChild;
+                        select.innerHTML = '';
+                        if (firstOption) select.appendChild(firstOption);
+                        
+                        if (data.success && data.values && data.values.length > 0) {
+                            data.values.forEach(value => {
+                                const option = document.createElement('option');
+                                option.value = value;
+                                option.textContent = value;
+                                select.appendChild(option);
+                            });
+                            
+                            // Restaurar valor selecionado se ainda existir
+                            if (currentValue) {
+                                select.value = currentValue;
+                            }
+                        }
+                    })
+                    .catch(error => {
+                        console.error(`Erro ao atualizar filtro ${fieldName}:`, error);
+                    });
+            }
+        }
+    }
+    
+    // Função para atualizar todos os outros filtros quando um filtro muda
+    function updateOtherFilters(changedField) {
+        const filterFields = ['organizacao', 'prioridade', 'tribunal', 'natureza', 'situacao', 'regime', 'ano_orc'];
+        filterFields.forEach(field => {
+            if (field !== changedField) {
+                updateFilter(field, changedField);
+            }
+        });
+    }
+    
+    // Adicionar listeners para mudanças nos filtros
+    filterInputs.forEach(input => {
+        const fieldName = input.name.replace('filter_', '');
+        
+        // Debounce para evitar muitas requisições
+        let timeout;
+        input.addEventListener('change', function() {
+            clearTimeout(timeout);
+            timeout = setTimeout(() => {
+                updateOtherFilters(fieldName);
+            }, 500); // Aguardar 500ms após mudança
+        });
+    });
+    
+    // Para organização (campo especial)
+    if (organizacaoInput) {
+        let timeout;
+        organizacaoInput.addEventListener('change', function() {
+            clearTimeout(timeout);
+            timeout = setTimeout(() => {
+                updateOtherFilters('organizacao');
+            }, 500);
+        });
+    }
+}
 
 // Carregar opções com busca incremental no servidor (muito mais rápido)
 function loadFilterOptionsWithSearch(fieldName, searchTerm = '') {
