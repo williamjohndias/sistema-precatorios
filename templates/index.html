@@ -9,19 +9,45 @@
     <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
 </head>
 <body>
-    <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom shadow-sm">
+    <nav class="navbar navbar-expand-lg navbar-dark precs-navbar border-bottom shadow-lg">
         <div class="container-fluid">
             <a class="navbar-brand d-flex align-items-center" href="{{ url_for('index') }}">
                 <div class="logo-container me-3">
-                    <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <rect width="40" height="40" rx="8" fill="#0d6efd"/>
-                        <path d="M12 20L18 14L22 18L28 12" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-                        <path d="M28 20V28H12V12H20" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    <svg width="50" height="50" viewBox="0 0 200 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                            <linearGradient id="goldGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                                <stop offset="0%" style="stop-color:#D4AF37;stop-opacity:1" />
+                                <stop offset="50%" style="stop-color:#B8860B;stop-opacity:1" />
+                                <stop offset="100%" style="stop-color:#8B6914;stop-opacity:1" />
+                            </linearGradient>
+                            <filter id="glow">
+                                <feGaussianBlur stdDeviation="1" result="coloredBlur"/>
+                                <feMerge>
+                                    <feMergeNode in="coloredBlur"/>
+                                    <feMergeNode in="SourceGraphic"/>
+                                </feMerge>
+                            </filter>
+                        </defs>
+                        <!-- P -->
+                        <path d="M10 10 L10 45 L25 45 Q35 45 35 35 Q35 25 25 25 L20 25 L20 10 Z" fill="url(#goldGradient)" filter="url(#glow)"/>
+                        <!-- R -->
+                        <path d="M45 10 L45 45 L60 45 Q70 45 70 35 Q70 25 60 25 L55 25 L55 10 Z M55 30 L70 45" stroke="url(#goldGradient)" stroke-width="3" fill="none" filter="url(#glow)"/>
+                        <path d="M45 10 L45 45 L60 45 Q70 45 70 35 Q70 25 60 25 L55 25 L55 10 Z" fill="url(#goldGradient)" filter="url(#glow)"/>
+                        <line x1="55" y1="30" x2="70" y2="45" stroke="url(#goldGradient)" stroke-width="3" filter="url(#glow)"/>
+                        <!-- E -->
+                        <path d="M80 10 L80 45 L105 45 L105 38 L87 38 L87 28 L103 28 L103 21 L87 21 L87 17 L105 17 L105 10 Z" fill="url(#goldGradient)" filter="url(#glow)"/>
+                        <!-- C -->
+                        <path d="M115 10 Q105 10 105 27.5 Q105 45 115 45 L135 45 L135 38 L118 38 Q113 38 113 27.5 Q113 17 118 17 L135 17 L135 10 Z" fill="url(#goldGradient)" filter="url(#glow)"/>
+                        <!-- S -->
+                        <path d="M145 10 Q135 10 135 20 Q135 25 140 25 Q145 25 150 25 Q155 25 155 30 Q155 35 150 35 Q145 35 140 35 L140 42 Q150 42 160 42 Q170 42 170 32 Q170 22 160 22 Q155 22 150 22 Q145 22 145 17 Q145 12 150 12 Q155 12 160 12 Q170 12 170 22" stroke="url(#goldGradient)" stroke-width="3" fill="none" filter="url(#glow)"/>
+                        <path d="M145 10 Q135 10 135 20 Q135 25 140 25 Q145 25 150 25 Q155 25 155 30 Q155 35 150 35 Q145 35 140 35 L140 42 Q150 42 160 42 Q170 42 170 32 Q170 22 160 22 Q155 22 150 22 Q145 22 145 17 Q145 12 150 12 Q155 12 160 12 Q170 12 170 22" fill="url(#goldGradient)" filter="url(#glow)"/>
+                        <!-- Estrela -->
+                        <path d="M180 27.5 L182 32 L186.5 32 L183 35 L184.5 40 L180 36.5 L175.5 40 L177 35 L173.5 32 L178 32 Z" fill="url(#goldGradient)" filter="url(#glow)"/>
                     </svg>
                 </div>
-                <div class="d-flex flex-column">
-                    <span class="fw-bold text-dark mb-0" style="font-size: 1.1rem; line-height: 1.2;">Precs</span>
-                    <span class="text-muted small" style="font-size: 0.75rem; line-height: 1;">Sistema de Precatórios</span>
+                <div class="d-flex flex-column ms-2">
+                    <span class="fw-bold precs-logo-text mb-0">PRECS</span>
+                    <span class="precs-subtitle small">Sistema de Precatórios</span>
                 </div>
             </a>
             <div class="d-flex gap-2 align-items-center">
