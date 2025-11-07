@@ -343,22 +343,26 @@ body::after {
 
 /* Estilos para campos editáveis */
 .editable-field {
-    border: 1px solid #ced4da;
+    border: 1px solid rgba(212, 175, 55, 0.3);
     border-radius: 0.25rem;
     padding: 0.375rem 0.75rem;
     font-size: 0.875rem;
     transition: all 0.15s ease-in-out;
+    background: rgba(20, 25, 40, 0.8);
+    color: #e0e0e0;
 }
 
 .editable-field:focus {
     border-color: #D4AF37;
     box-shadow: 0 0 0 0.2rem rgba(212, 175, 55, 0.35);
     outline: 0;
+    background: rgba(25, 30, 45, 0.9);
+    color: #ffffff;
 }
 
 .editable-field.modified {
     border-color: #D4AF37;
-    background: linear-gradient(135deg, rgba(212, 175, 55, 0.15) 0%, rgba(184, 134, 11, 0.1) 100%);
+    background: linear-gradient(135deg, rgba(212, 175, 55, 0.2) 0%, rgba(184, 134, 11, 0.15) 100%);
 }
 
 .editable-field.error {
@@ -371,9 +375,8 @@ body::after {
     color: #e0e0e0;
     padding: 0.375rem 0.75rem;
     font-size: 0.875rem;
-    color: #6c757d;
-    background-color: #f8f9fa;
-    border: 1px solid #e9ecef;
+    background-color: transparent;
+    border: none;
     border-radius: 0.25rem;
 }
 
