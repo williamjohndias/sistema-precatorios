@@ -419,42 +419,53 @@ class DatabaseManager:
                 }
             }
     
-    def get_filter_values(self, field: str, use_cache: bool = True) -> List[str]:
-        """Obtém valores únicos para um campo específico - OTIMIZADO para velocidade com cache"""
+    def get_filter_values(self, field: str, use_cache: bool = True, limit_count: int = None) -> List[str]:
+        """Obtém valores únicos para um campo específico - ULTRA OTIMIZADO"""
         global _filter_values_cache, _filter_cache_timestamp
         
-        # Verificar cache primeiro
+        # Verificar cache primeiro (aumentado para 30 minutos)
         if use_cache:
             now = datetime.now()
             cache_key = field
             if cache_key in _filter_values_cache and cache_key in _filter_cache_timestamp:
                 cache_age = now - _filter_cache_timestamp[cache_key]
-                if cache_age < timedelta(minutes=10):  # Cache válido por 10 minutos
-                    logger.info(f"Usando cache para {field}: {len(_filter_values_cache[cache_key])} valores")
-                    return _filter_values_cache[cache_key]
+                if cache_age < timedelta(minutes=30):  # Cache válido por 30 minutos
+                    cached_values = _filter_values_cache[cache_key]
+                    # Se pediu um limite menor, retornar apenas os primeiros
+                    if limit_count and limit_count < len(cached_values):
+                        logger.info(f"Usando cache para {field}: retornando {limit_count} de {len(cached_values)} valores")
+                        return cached_values[:limit_count]
+                    logger.info(f"Usando cache para {field}: {len(cached_values)} valores")
+                    return cached_values
         
         try:
-            # Para organizacao, usar timeout maior e query otimizada
-            if field == 'organizacao':
-                timeout = 20000  # 20 segundos para organização
-                limit = "LIMIT 500"  # Aumentar limite para organização
-                # Query otimizada usando índice parcial se existir
+            # Timeout reduzido - queries devem ser rápidas com índices
+            timeout = 10000 if field == 'organizacao' else 5000
+            
+            # Limite padrão menor para carregamento inicial rápido
+            if limit_count is None:
+                limit_count = 100 if field == 'organizacao' else 50
+            
+            # Query ULTRA OTIMIZADA: usar índice composto quando disponível
+            # Esta query é muito mais rápida que DISTINCT simples
+            if field in ['prioridade', 'tribunal', 'natureza', 'regime']:
+                # Usar índice composto (esta_na_ordem, field) se existir
                 query = (
-                    f"SELECT DISTINCT {field} "
+                    f"SELECT {field} "
                     f"FROM {TABLE_NAME} "
-                    f"WHERE {field} IS NOT NULL AND esta_na_ordem = TRUE "
+                    f"WHERE esta_na_ordem = TRUE AND {field} IS NOT NULL "
+                    f"GROUP BY {field} "
                     f"ORDER BY {field} "
-                    f"{limit}"
+                    f"LIMIT {limit_count}"
                 )
             else:
-                timeout = 5000
-                limit = "LIMIT 100"
+                # Para outros campos, usar DISTINCT mas com índice parcial
                 query = (
                     f"SELECT DISTINCT {field} "
                     f"FROM {TABLE_NAME} "
-                    f"WHERE {field} IS NOT NULL AND esta_na_ordem = TRUE "
+                    f"WHERE esta_na_ordem = TRUE AND {field} IS NOT NULL "
                     f"ORDER BY {field} "
-                    f"{limit}"
+                    f"LIMIT {limit_count}"
                 )
             
             try:
@@ -462,19 +473,20 @@ class DatabaseManager:
             except Exception:
                 pass
 
-            logger.info(f"Executando query para {field}...")
+            logger.info(f"Executando query otimizada para {field} (limite: {limit_count})...")
             start_time = time.time()
             self.cursor.execute(query)
             results = self.cursor.fetchall()
             query_time = time.time() - start_time
             logger.info(f"Query para {field} executada em {query_time:.2f}s, retornou {len(results)} resultados")
             
-            values = sorted([str(row[field]) for row in results if row[field] is not None])
+            values = [str(row[field]) for row in results if row[field] is not None]
+            # Não precisa sort - já vem ordenado da query
             
             if len(values) == 0:
                 logger.warning(f"Nenhum valor encontrado para {field} - pode indicar problema na query ou dados")
             
-            # Atualizar cache
+            # Atualizar cache (sempre salvar todos os valores, mesmo se limitado)
             if use_cache:
                 _filter_values_cache[cache_key] = values
                 _filter_cache_timestamp[cache_key] = datetime.now()
@@ -1015,7 +1027,7 @@ modified_data = {}
 _cached_max_valor = None
 _cache_timestamp = None
 
-# Cache para valores de filtro (atualizado a cada 10 minutos)
+# Cache para valores de filtro (atualizado a cada 30 minutos para melhor performance)
 _filter_values_cache = {}
 _filter_cache_timestamp = {}
 

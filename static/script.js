@@ -983,7 +983,7 @@ function loadAllFiltersAsync() {
     });
 }
 
-// Carregar opção de filtro de forma assíncrona
+// Carregar opção de filtro de forma assíncrona (com limite inicial para velocidade)
 function loadFilterOptionAsync(fieldName) {
     // Verificar se já está carregado
     if (fieldName === 'organizacao') {
@@ -998,7 +998,10 @@ function loadFilterOptionAsync(fieldName) {
         }
     }
     
-    return fetch(`/api/get_filter_options?field=${fieldName}`)
+    // Carregar com limite inicial menor para velocidade (50 para organização, 30 para outros)
+    const initialLimit = fieldName === 'organizacao' ? 50 : 30;
+    
+    return fetch(`/api/get_filter_options?field=${fieldName}&limit=${initialLimit}`)
         .then(response => response.json())
         .then(data => {
             if (data.success && data.values && data.values.length > 0) {
