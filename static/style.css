@@ -1256,7 +1256,7 @@ input[list]:hover {
 .stat-number {
     font-size: 2rem;
     font-weight: 700;
-    color: #fff;
+    color: #1a1a1a;
     line-height: 1;
     animation: count-up 2s ease-out;
 }
@@ -1274,7 +1274,7 @@ input[list]:hover {
 
 .stat-label {
     font-size: 0.875rem;
-    color: rgba(255, 255, 255, 0.8);
+    color: #6c757d;
     text-transform: uppercase;
     letter-spacing: 1px;
 }
@@ -1296,7 +1296,7 @@ input[list]:hover {
 }
 
 .footer-info p {
-    color: rgba(255, 255, 255, 0.9);
+    color: #495057;
     font-size: 0.95rem;
 }
 
