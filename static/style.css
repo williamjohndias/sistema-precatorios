@@ -17,6 +17,8 @@ body {
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
     border: none;
     border-radius: 8px;
+    position: relative;
+    z-index: 1;
 }
 
 .card-header {
@@ -41,6 +43,15 @@ body {
     border-bottom: 2px solid #dee2e6;
     padding: 0.75rem 0.5rem;
     text-transform: none;
+}
+
+/* Cabeçalho sticky da tabela - dentro do container apenas */
+.table-header-sticky {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background-color: #f8f9fa !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,.08);
 }
 
 .table td {
