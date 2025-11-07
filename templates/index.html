@@ -69,7 +69,7 @@
                             <i class="fas fa-database"></i>
                         </div>
                         <div class="stat-content">
-                            <div class="stat-value">{{ pagination.total_count }}</div>
+                            <div class="stat-value" style="color: #ffffff;">{{ pagination.total_count }}</div>
                             <div class="stat-label">Total de Registros</div>
                         </div>
                     </div>
@@ -507,13 +507,6 @@
 
     <!-- Rodapé -->
     <footer class="footer mt-5">
-        <div class="footer-wave">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 100" preserveAspectRatio="none">
-                <path d="M0,50 Q300,0 600,50 T1200,50 L1200,100 L0,100 Z" fill="#D2AF52" opacity="0.3"></path>
-                <path d="M0,60 Q300,20 600,60 T1200,60 L1200,100 L0,100 Z" fill="#D2AF52" opacity="0.5"></path>
-                <path d="M0,70 Q300,40 600,70 T1200,70 L1200,100 L0,100 Z" fill="#D2AF52"></path>
-            </svg>
-        </div>
         <div class="footer-content">
             <div class="container">
                 <div class="row align-items-center">
@@ -524,17 +517,21 @@
                         </div>
                     </div>
                     <div class="col-md-4 text-center mb-3 mb-md-0">
-                        <div class="footer-stats">
-                            <div class="stat-item">
-                                <i class="fas fa-database stat-icon"></i>
-                                <span class="stat-number">{{ pagination.total_count }}</span>
-                                <span class="stat-label">Registros</span>
+                        <div class="header-stats">
+                            <div class="stat-card">
+                                <div class="stat-icon">
+                                    <i class="fas fa-database"></i>
+                                </div>
+                                <div class="stat-content">
+                                    <div class="stat-value" style="color: #ffffff;">{{ pagination.total_count }}</div>
+                                    <div class="stat-label">Total de Registros</div>
+                                </div>
                             </div>
                         </div>
                     </div>
                     <div class="col-md-4 text-center text-md-end">
                         <div class="footer-info">
-                            <p class="mb-0">
+                            <p class="mb-0" style="color: #ffffff;">
                                 <i class="fas fa-clock"></i>
                                 <span id="currentYear"></span>
                             </p>

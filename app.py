@@ -1280,16 +1280,16 @@ def index():
             page = 1
             
         try:
-            # Paginação: 50 registros por página inicial (MÁXIMA performance)
+            # Paginação: 500 registros por página
             # Usuário pode aumentar se necessário via parâmetro per_page
-            per_page = int(request.args.get('per_page', 50))
+            per_page = int(request.args.get('per_page', 500))
             if per_page < 1:
-                per_page = 50
+                per_page = 500
             # Limite máximo de 2000 por página para manter boa performance
             if per_page > 2000:
                 per_page = 2000
         except (ValueError, TypeError):
-            per_page = 50
+            per_page = 500
         
         # Parâmetros de ordenação (padrão: ordenar pela coluna 'ordem')
         sort_field = request.args.get('sort', 'ordem')
@@ -1339,7 +1339,18 @@ def index():
             logger.info(f"Filtro de valor não aplicado - valor recebido: {raw_valor}, normalizado: {normalized_valor}")
         
         # Filtro padrão: mostrar apenas precatórios que estão na ordem
-        if 'esta_na_ordem' not in filters:
+        # Mas respeitar se o usuário selecionou "Todos" (valor vazio explícito)
+        esta_na_ordem_param = request.args.get('filter_esta_na_ordem', None)
+        if esta_na_ordem_param is not None:
+            # O parâmetro foi enviado (usuário interagiu com o filtro)
+            if esta_na_ordem_param.strip() == '':
+                # Usuário selecionou "Todos" - não aplicar filtro
+                pass  # Não adicionar ao filters, mostrar todos
+            else:
+                # Usuário selecionou "Sim" ou "Não" - já está em filters
+                pass
+        else:
+            # Parâmetro não foi enviado (primeira carga ou não interagiu) - aplicar padrão
             filters['esta_na_ordem'] = 'true'
         
         # CARREGAR FILTROS: Organização carrega TODAS, outros filtros são dinâmicos baseados em filtros ativos

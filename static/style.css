@@ -1404,10 +1404,13 @@ input[list]:hover {
 
 .footer {
     position: relative;
-    background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+    background: rgba(15, 20, 28, 0.95);
+    backdrop-filter: blur(10px);
+    border-top: 1px solid rgba(212, 175, 55, 0.2);
     color: #fff;
     margin-top: 5rem;
-    padding-top: 0;
+    padding-top: 3rem;
+    padding-bottom: 2rem;
     overflow: hidden;
 }
 
@@ -1482,7 +1485,7 @@ input[list]:hover {
 /* Conteúdo do rodapé */
 .footer-content {
     position: relative;
-    padding: 120px 0 2rem;
+    padding: 2rem 0;
     z-index: 1;
 }
 
@@ -1525,6 +1528,7 @@ input[list]:hover {
     font-weight: 600;
     color: #ffffff;
     margin: 0;
+    font-size: 1.1rem;
 }
 
 /* Estatísticas do rodapé */
@@ -1621,7 +1625,7 @@ input[list]:hover {
 }
 
 .footer-info p {
-    color: #495057;
+    color: #ffffff;
     font-size: 0.95rem;
 }
 
