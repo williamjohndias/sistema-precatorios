@@ -1708,7 +1708,7 @@ def admin_apply_indexes():
 
 @app.route('/api/get_filter_options', methods=['GET'])
 def get_filter_options():
-    """API para carregar opções de filtro sob demanda (AJAX) - OTIMIZADA"""
+    """API para carregar opções de filtro sob demanda (AJAX) - ULTRA OTIMIZADA"""
     try:
         if not db_manager.connect():
             return jsonify({'success': False, 'message': 'Erro ao conectar com banco'}), 500
@@ -1717,16 +1717,21 @@ def get_filter_options():
         if field not in ['organizacao', 'prioridade', 'tribunal', 'natureza', 'situacao', 'regime', 'ano_orc']:
             return jsonify({'success': False, 'message': 'Campo inválido'}), 400
         
-        # Usar cache para melhor performance
-        values = db_manager.get_filter_values(field, use_cache=True)
+        # Permitir limite opcional para carregamento incremental
+        limit = request.args.get('limit', None)
+        limit_count = int(limit) if limit and limit.isdigit() else None
         
-        logger.info(f"API: Retornando {len(values)} valores para {field}")
+        # Usar cache e limite para carregamento rápido inicial
+        values = db_manager.get_filter_values(field, use_cache=True, limit_count=limit_count)
+        
+        logger.info(f"API: Retornando {len(values)} valores para {field} (limite: {limit_count})")
         
         return jsonify({
             'success': True,
             'field': field,
             'values': values,
-            'count': len(values)
+            'count': len(values),
+            'has_more': limit_count is not None and len(values) == limit_count  # Indica se há mais valores
         })
     except Exception as e:
         logger.error(f"Erro ao obter opções de filtro: {e}")
