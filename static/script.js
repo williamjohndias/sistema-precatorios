@@ -18,6 +18,31 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Configurar atualização dinâmica dos filtros
     setupDynamicFilters();
+    
+    // Garantir que input hidden de organização está sincronizado com input visível
+    const organizacaoInput = document.getElementById('filter_organizacao_input');
+    const organizacaoHidden = document.getElementById('filter_organizacao_hidden');
+    if (organizacaoInput && organizacaoHidden) {
+        // Se o input visível tem valor mas o hidden não, sincronizar
+        if (organizacaoInput.value && !organizacaoHidden.value) {
+            // Tentar encontrar o valor nas opções
+            const options = document.querySelectorAll('#organizacao_options .searchable-select-option');
+            options.forEach(opt => {
+                if (opt.textContent.trim() === organizacaoInput.value.trim()) {
+                    organizacaoHidden.value = opt.dataset.value || organizacaoInput.value;
+                }
+            });
+        }
+        // Se o hidden tem valor mas o visível não, sincronizar
+        if (organizacaoHidden.value && !organizacaoInput.value) {
+            const options = document.querySelectorAll('#organizacao_options .searchable-select-option');
+            options.forEach(opt => {
+                if (opt.dataset.value === organizacaoHidden.value) {
+                    organizacaoInput.value = opt.textContent;
+                }
+            });
+        }
+    }
 });
 
 // Inicializar tabela
@@ -1110,16 +1135,42 @@ function setupDynamicFilters() {
         }
     }
     
+    // Sincronizar input hidden com input visível de organização no carregamento
+    function syncOrganizacaoInputs() {
+        const organizacaoVisibleInput = document.getElementById('filter_organizacao_input');
+        if (organizacaoVisibleInput && organizacaoVisibleInput.value && organizacaoInput) {
+            // Se o input visível tem valor, tentar encontrar o valor correto no hidden
+            const options = document.querySelectorAll('#organizacao_options .searchable-select-option');
+            options.forEach(opt => {
+                if (opt.textContent.trim() === organizacaoVisibleInput.value.trim()) {
+                    organizacaoInput.value = opt.dataset.value || organizacaoVisibleInput.value;
+                }
+            });
+            // Se não encontrou, usar o valor do input visível
+            if (!organizacaoInput.value && organizacaoVisibleInput.value) {
+                organizacaoInput.value = organizacaoVisibleInput.value;
+            }
+        }
+    }
+    
     // Atualizar filtros no carregamento inicial
-    // Usar múltiplos timeouts para garantir que o DOM e valores estão prontos
+    // Sincronizar primeiro, depois atualizar filtros
     setTimeout(() => {
+        syncOrganizacaoInputs();
         checkAndUpdatePreSelectedFilters();
     }, 300);
     
     // Também verificar após um delay maior para garantir que tudo está carregado
     setTimeout(() => {
+        syncOrganizacaoInputs();
         checkAndUpdatePreSelectedFilters();
     }, 1000);
+    
+    // Verificar uma última vez após tudo carregar (incluindo opções de organização)
+    setTimeout(() => {
+        syncOrganizacaoInputs();
+        checkAndUpdatePreSelectedFilters();
+    }, 2000);
     
     // Quando organização muda, atualizar outros filtros
     if (organizacaoInput) {
