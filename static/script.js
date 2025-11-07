@@ -967,24 +967,32 @@ function loadDropdownOptions(fields) {
     loadNext();
 }
 
-// Carregar todos os filtros via AJAX em paralelo (não bloqueia página)
-function loadAllFiltersAsync() {
-    const filterFields = ['organizacao', 'prioridade', 'tribunal', 'natureza', 'situacao', 'regime', 'ano_orc'];
-    
-    // Carregar todos em paralelo
-    const promises = filterFields.map(field => {
-        return loadFilterOptionAsync(field);
+// Configurar carregamento lazy de filtros (apenas quando usuário clicar)
+function setupLazyFilterLoading() {
+    // Para selects normais
+    const filterSelects = document.querySelectorAll('select[name^="filter_"]');
+    filterSelects.forEach(select => {
+        const fieldName = select.name.replace('filter_', '');
+        
+        // Carregar apenas quando usuário abrir o select
+        select.addEventListener('focus', function() {
+            if (select.options.length <= 1) { // Apenas a opção padrão
+                loadFilterOptionAsync(fieldName, select);
+            }
+        }, { once: true });
+        
+        select.addEventListener('click', function() {
+            if (select.options.length <= 1) { // Apenas a opção padrão
+                loadFilterOptionAsync(fieldName, select);
+            }
+        }, { once: true });
     });
     
-    // Aguardar todos carregarem (mas não bloquear UI)
-    Promise.allSettled(promises).then(results => {
-        const successCount = results.filter(r => r.status === 'fulfilled').length;
-        console.log(`Filtros carregados: ${successCount}/${filterFields.length}`);
-    });
+    // Para organização (dropdown pesquisável), já está configurado em setupSearchableSelect
 }
 
-// Carregar opção de filtro de forma assíncrona (com limite inicial para velocidade)
-function loadFilterOptionAsync(fieldName) {
+// Carregar opção de filtro de forma assíncrona (com limite MUITO menor e retry)
+function loadFilterOptionAsync(fieldName, selectElement = null) {
     // Verificar se já está carregado
     if (fieldName === 'organizacao') {
         const optionsContainer = document.getElementById('organizacao_options');
@@ -992,18 +1000,70 @@ function loadFilterOptionAsync(fieldName) {
             return Promise.resolve(); // Já carregado
         }
     } else {
-        const select = document.querySelector(`select[name="filter_${fieldName}"]`);
+        const select = selectElement || document.querySelector(`select[name="filter_${fieldName}"]`);
         if (select && select.options.length > 1) {
             return Promise.resolve(); // Já carregado
         }
     }
     
-    // Carregar com limite inicial menor para velocidade (50 para organização, 30 para outros)
-    const initialLimit = fieldName === 'organizacao' ? 50 : 30;
+    // Limite MUITO menor para velocidade máxima (20 para organização, 15 para outros)
+    const initialLimit = fieldName === 'organizacao' ? 20 : 15;
     
-    return fetch(`/api/get_filter_options?field=${fieldName}&limit=${initialLimit}`)
-        .then(response => response.json())
+    // Mostrar indicador de carregamento
+    if (fieldName === 'organizacao') {
+        const optionsContainer = document.getElementById('organizacao_options');
+        if (optionsContainer) {
+            const loading = optionsContainer.querySelector('.loading-indicator');
+            if (!loading) {
+                const loadingDiv = document.createElement('div');
+                loadingDiv.className = 'searchable-select-option loading-indicator';
+                loadingDiv.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Carregando...';
+                loadingDiv.style.textAlign = 'center';
+                loadingDiv.style.color = '#6c757d';
+                optionsContainer.appendChild(loadingDiv);
+            }
+        }
+    } else {
+        const select = selectElement || document.querySelector(`select[name="filter_${fieldName}"]`);
+        if (select) {
+            const loadingOption = document.createElement('option');
+            loadingOption.textContent = 'Carregando...';
+            loadingOption.disabled = true;
+            loadingOption.className = 'loading-option';
+            select.appendChild(loadingOption);
+        }
+    }
+    
+    // Criar AbortController para timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 segundos timeout
+    
+    return fetch(`/api/get_filter_options?field=${fieldName}&limit=${initialLimit}`, {
+        signal: controller.signal
+    })
+        .then(response => {
+            clearTimeout(timeoutId);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            return response.json();
+        })
         .then(data => {
+            // Remover indicador de loading
+            if (fieldName === 'organizacao') {
+                const optionsContainer = document.getElementById('organizacao_options');
+                if (optionsContainer) {
+                    const loading = optionsContainer.querySelector('.loading-indicator');
+                    if (loading) loading.remove();
+                }
+            } else {
+                const select = selectElement || document.querySelector(`select[name="filter_${fieldName}"]`);
+                if (select) {
+                    const loading = select.querySelector('.loading-option');
+                    if (loading) loading.remove();
+                }
+            }
+            
             if (data.success && data.values && data.values.length > 0) {
                 if (fieldName === 'organizacao') {
                     // Atualizar dropdown pesquisável de organização
@@ -1028,7 +1088,7 @@ function loadFilterOptionAsync(fieldName) {
                     }
                 } else {
                     // Atualizar select normal
-                    const select = document.querySelector(`select[name="filter_${fieldName}"]`);
+                    const select = selectElement || document.querySelector(`select[name="filter_${fieldName}"]`);
                     if (select) {
                         const firstOption = select.firstElementChild;
                         select.innerHTML = '';
@@ -1042,11 +1102,61 @@ function loadFilterOptionAsync(fieldName) {
                         });
                     }
                 }
+            } else {
+                // Se não retornou dados, mostrar mensagem
+                showFilterError(fieldName, 'Nenhum dado disponível');
             }
         })
         .catch(error => {
+            clearTimeout(timeoutId);
             console.error(`Erro ao carregar filtro ${fieldName}:`, error);
+            
+            // Remover indicador de loading
+            if (fieldName === 'organizacao') {
+                const optionsContainer = document.getElementById('organizacao_options');
+                if (optionsContainer) {
+                    const loading = optionsContainer.querySelector('.loading-indicator');
+                    if (loading) loading.remove();
+                }
+            } else {
+                const select = selectElement || document.querySelector(`select[name="filter_${fieldName}"]`);
+                if (select) {
+                    const loading = select.querySelector('.loading-option');
+                    if (loading) loading.remove();
+                }
+            }
+            
+            // Mostrar erro e permitir retry
+            showFilterError(fieldName, 'Erro ao carregar. Clique para tentar novamente.');
         });
+}
+
+// Mostrar erro em filtro
+function showFilterError(fieldName, message) {
+    if (fieldName === 'organizacao') {
+        const optionsContainer = document.getElementById('organizacao_options');
+        if (optionsContainer) {
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'searchable-select-option';
+            errorDiv.textContent = message;
+            errorDiv.style.textAlign = 'center';
+            errorDiv.style.color = '#dc3545';
+            errorDiv.style.cursor = 'pointer';
+            errorDiv.onclick = () => {
+                loadFilterOptionAsync(fieldName);
+            };
+            optionsContainer.appendChild(errorDiv);
+        }
+    } else {
+        const select = document.querySelector(`select[name="filter_${fieldName}"]`);
+        if (select) {
+            const errorOption = document.createElement('option');
+            errorOption.textContent = message;
+            errorOption.disabled = true;
+            errorOption.style.color = '#dc3545';
+            select.appendChild(errorOption);
+        }
+    }
 }
 
 // Carregar opções de um único filtro

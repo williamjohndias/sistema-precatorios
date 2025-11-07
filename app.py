@@ -440,53 +440,51 @@ class DatabaseManager:
         
         try:
             # Timeout reduzido - queries devem ser rápidas com índices
-            timeout = 10000 if field == 'organizacao' else 5000
+            timeout = 8000 if field == 'organizacao' else 5000
             
-            # Limite padrão menor para carregamento inicial rápido
+            # Limite padrão MUITO menor para carregamento inicial rápido
             if limit_count is None:
-                limit_count = 100 if field == 'organizacao' else 50
-            
-            # Query ULTRA OTIMIZADA: usar índice composto quando disponível
-            # Esta query é muito mais rápida que DISTINCT simples
-            if field in ['prioridade', 'tribunal', 'natureza', 'regime']:
-                # Usar índice composto (esta_na_ordem, field) se existir
-                query = (
-                    f"SELECT {field} "
-                    f"FROM {TABLE_NAME} "
-                    f"WHERE esta_na_ordem = TRUE AND {field} IS NOT NULL "
-                    f"GROUP BY {field} "
-                    f"ORDER BY {field} "
-                    f"LIMIT {limit_count}"
-                )
-            else:
-                # Para outros campos, usar DISTINCT mas com índice parcial
-                query = (
-                    f"SELECT DISTINCT {field} "
-                    f"FROM {TABLE_NAME} "
-                    f"WHERE esta_na_ordem = TRUE AND {field} IS NOT NULL "
-                    f"ORDER BY {field} "
-                    f"LIMIT {limit_count}"
-                )
+                limit_count = 20 if field == 'organizacao' else 15
             
             try:
                 self.cursor.execute(f"SET statement_timeout TO {timeout}")
             except Exception:
                 pass
-
+            
+            # Query ULTRA OTIMIZADA: usar abordagem mais simples e rápida
+            # Não usar DISTINCT no banco - pegar mais linhas e filtrar em Python (muito mais rápido)
+            # Pegar 3x o limite para garantir valores únicos suficientes
+            query = (
+                f"SELECT {field} "
+                f"FROM {TABLE_NAME} "
+                f"WHERE esta_na_ordem = TRUE AND {field} IS NOT NULL "
+                f"ORDER BY {field} "
+                f"LIMIT {limit_count * 3}"  # Pegar mais para garantir valores únicos
+            )
+            
             logger.info(f"Executando query otimizada para {field} (limite: {limit_count})...")
             start_time = time.time()
             self.cursor.execute(query)
-            results = self.cursor.fetchall()
-            query_time = time.time() - start_time
-            logger.info(f"Query para {field} executada em {query_time:.2f}s, retornou {len(results)} resultados")
+            all_results = self.cursor.fetchall()
             
-            values = [str(row[field]) for row in results if row[field] is not None]
-            # Não precisa sort - já vem ordenado da query
+            # Extrair valores únicos em Python (muito mais rápido que DISTINCT no banco para poucos valores)
+            seen = set()
+            values = []
+            for row in all_results:
+                value = str(row[field]) if row[field] is not None else None
+                if value and value not in seen:
+                    seen.add(value)
+                    values.append(value)
+                    if len(values) >= limit_count:
+                        break
+            
+            query_time = time.time() - start_time
+            logger.info(f"Query para {field} executada em {query_time:.2f}s, retornou {len(values)} valores únicos")
             
             if len(values) == 0:
                 logger.warning(f"Nenhum valor encontrado para {field} - pode indicar problema na query ou dados")
             
-            # Atualizar cache (sempre salvar todos os valores, mesmo se limitado)
+            # Atualizar cache
             if use_cache:
                 _filter_values_cache[cache_key] = values
                 _filter_cache_timestamp[cache_key] = datetime.now()
