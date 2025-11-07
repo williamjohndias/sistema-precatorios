@@ -16,11 +16,9 @@ document.addEventListener('DOMContentLoaded', function() {
     setupDatalistClickable();
     reconfigureSearchableSelect = setupSearchableSelect();
     
-    // Carregar filtros via AJAX em paralelo (não bloqueia carregamento da página)
-    // Isso permite que a página apareça rapidamente
-    setTimeout(function() {
-        loadAllFiltersAsync();
-    }, 100); // Pequeno delay para não bloquear renderização inicial
+    // NÃO carregar filtros automaticamente - apenas quando usuário clicar
+    // Isso garante que a página carregue instantaneamente
+    setupLazyFilterLoading();
 });
 
 // Inicializar tabela
