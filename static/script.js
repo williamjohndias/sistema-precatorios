@@ -973,17 +973,34 @@ function setupDynamicFilters() {
     // Função para obter TODOS os filtros ativos
     function getAllActiveFilters() {
         const active = {};
+        
+        // Capturar todos os inputs e selects de filtro
         allFilterInputs.forEach(input => {
             const fieldName = input.name.replace('filter_', '');
-            const value = input.value ? input.value.trim() : '';
+            let value = '';
+            
+            if (input.type === 'hidden' || input.type === 'text' || input.type === 'number') {
+                value = input.value ? input.value.trim() : '';
+            } else if (input.tagName === 'SELECT') {
+                value = input.value ? input.value.trim() : '';
+            }
+            
             if (value) {
                 active[fieldName] = value;
             }
         });
-        // Adicionar organização se houver
-        if (organizacaoInput && organizacaoInput.value) {
+        
+        // Adicionar organização do input hidden (prioridade)
+        if (organizacaoInput && organizacaoInput.value && organizacaoInput.value.trim()) {
             active.organizacao = organizacaoInput.value.trim();
         }
+        
+        // Também verificar o input visível de organização (caso o hidden não esteja preenchido)
+        const organizacaoVisibleInput = document.getElementById('filter_organizacao_input');
+        if (!active.organizacao && organizacaoVisibleInput && organizacaoVisibleInput.value && organizacaoVisibleInput.value.trim()) {
+            active.organizacao = organizacaoVisibleInput.value.trim();
+        }
+        
         return active;
     }
     
@@ -1069,17 +1086,28 @@ function setupDynamicFilters() {
     // Verificar se há filtros pré-selecionados e atualizar outros filtros no carregamento
     function checkAndUpdatePreSelectedFilters() {
         const activeFilters = getAllActiveFilters();
+        console.log('Verificando filtros pré-selecionados...', activeFilters);
+        
+        // Se há pelo menos um filtro ativo (especialmente organização), atualizar outros filtros
         if (Object.keys(activeFilters).length > 0) {
-            // Há filtros pré-selecionados, atualizar todos os outros filtros
             console.log('Filtros pré-selecionados detectados, atualizando outros filtros...', activeFilters);
+            // Atualizar todos os outros filtros baseado nos filtros ativos
             updateAllOtherFilters();
+        } else {
+            console.log('Nenhum filtro pré-selecionado encontrado');
         }
     }
     
-    // Atualizar filtros no carregamento inicial (após um pequeno delay para garantir que o DOM está pronto)
+    // Atualizar filtros no carregamento inicial
+    // Usar múltiplos timeouts para garantir que o DOM e valores estão prontos
     setTimeout(() => {
         checkAndUpdatePreSelectedFilters();
-    }, 500);
+    }, 300);
+    
+    // Também verificar após um delay maior para garantir que tudo está carregado
+    setTimeout(() => {
+        checkAndUpdatePreSelectedFilters();
+    }, 1000);
     
     // Quando organização muda, atualizar outros filtros
     if (organizacaoInput) {
