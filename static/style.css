@@ -1,9 +1,113 @@
 /* Estilos para o Sistema de Precatórios */
 
 body {
-    background: #f8f9fa;
+    background: #0a0e1a;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
     min-height: 100vh;
+    position: relative;
+    overflow-x: hidden;
+}
+
+/* Background animado com tema jurídico */
+body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: 
+        radial-gradient(circle at 20% 30%, rgba(212, 175, 55, 0.1) 0%, transparent 50%),
+        radial-gradient(circle at 80% 70%, rgba(212, 175, 55, 0.08) 0%, transparent 50%),
+        linear-gradient(135deg, #0a0e1a 0%, #1a1f2e 50%, #0f1419 100%);
+    z-index: -2;
+    animation: backgroundShift 20s ease-in-out infinite;
+}
+
+body::after {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-image: 
+        repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(212, 175, 55, 0.03) 2px, rgba(212, 175, 55, 0.03) 4px),
+        repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(212, 175, 55, 0.03) 2px, rgba(212, 175, 55, 0.03) 4px);
+    z-index: -1;
+    animation: gridMove 30s linear infinite;
+    pointer-events: none;
+}
+
+@keyframes backgroundShift {
+    0%, 100% {
+        background: 
+            radial-gradient(circle at 20% 30%, rgba(212, 175, 55, 0.1) 0%, transparent 50%),
+            radial-gradient(circle at 80% 70%, rgba(212, 175, 55, 0.08) 0%, transparent 50%),
+            linear-gradient(135deg, #0a0e1a 0%, #1a1f2e 50%, #0f1419 100%);
+    }
+    50% {
+        background: 
+            radial-gradient(circle at 80% 30%, rgba(212, 175, 55, 0.1) 0%, transparent 50%),
+            radial-gradient(circle at 20% 70%, rgba(212, 175, 55, 0.08) 0%, transparent 50%),
+            linear-gradient(135deg, #0f1419 0%, #1a1f2e 50%, #0a0e1a 100%);
+    }
+}
+
+@keyframes gridMove {
+    0% {
+        transform: translate(0, 0);
+    }
+    100% {
+        transform: translate(50px, 50px);
+    }
+}
+
+/* Partículas flutuantes (símbolos jurídicos) */
+.justice-particles {
+    position: fixed;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+    z-index: -1;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+.justice-particle {
+    position: absolute;
+    color: rgba(212, 175, 55, 0.15);
+    font-size: 2rem;
+    animation: float 20s infinite ease-in-out;
+    opacity: 0;
+}
+
+.justice-particle:nth-child(1) { left: 10%; animation-delay: 0s; }
+.justice-particle:nth-child(2) { left: 20%; animation-delay: 2s; }
+.justice-particle:nth-child(3) { left: 30%; animation-delay: 4s; }
+.justice-particle:nth-child(4) { left: 40%; animation-delay: 6s; }
+.justice-particle:nth-child(5) { left: 50%; animation-delay: 8s; }
+.justice-particle:nth-child(6) { left: 60%; animation-delay: 10s; }
+.justice-particle:nth-child(7) { left: 70%; animation-delay: 12s; }
+.justice-particle:nth-child(8) { left: 80%; animation-delay: 14s; }
+.justice-particle:nth-child(9) { left: 90%; animation-delay: 16s; }
+
+@keyframes float {
+    0% {
+        transform: translateY(100vh) rotate(0deg);
+        opacity: 0;
+    }
+    10% {
+        opacity: 1;
+    }
+    90% {
+        opacity: 1;
+    }
+    100% {
+        transform: translateY(-100px) rotate(360deg);
+        opacity: 0;
+    }
 }
 
 /* Container principal com espaçamento melhorado */
@@ -14,30 +118,67 @@ body {
     padding-right: 1.5rem;
 }
 
+/* Estilos para formulários no modo escuro */
+.form-control, .form-select {
+    background: rgba(20, 25, 40, 0.8);
+    border: 1px solid rgba(212, 175, 55, 0.3);
+    color: #e0e0e0;
+    transition: all 0.2s ease;
+}
+
+.form-control:focus, .form-select:focus {
+    background: rgba(25, 30, 45, 0.9);
+    border-color: #D4AF37;
+    color: #ffffff;
+    box-shadow: 0 0 0 0.2rem rgba(212, 175, 55, 0.25);
+}
+
+.form-control::placeholder {
+    color: #888;
+}
+
+.form-label {
+    color: #d0d0d0;
+}
+
+.form-label.text-muted {
+    color: #a0a0a0 !important;
+}
+
 /* Badges de informação */
 .info-badge {
-    background: #ffffff;
+    background: rgba(20, 25, 40, 0.9);
+    backdrop-filter: blur(10px);
     padding: 0.75rem 1.25rem;
     border-radius: 8px;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
     border-left: 3px solid #D4AF37;
+    border: 1px solid rgba(212, 175, 55, 0.2);
     transition: all 0.2s ease;
-    border: 1px solid #e9ecef;
+    color: #ffffff;
 }
 
 .info-badge:hover {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 15px rgba(212, 175, 55, 0.3);
     transform: translateY(-1px);
-    border-left-color: #B8860B;
+    border-left-color: #F5E08A;
+    border-color: rgba(212, 175, 55, 0.4);
+}
+
+.info-badge .text-muted {
+    color: #a0a0a0 !important;
 }
 
 /* Navbar com gradiente escuro estilo Precs */
 .precs-navbar {
-    background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
-    box-shadow: 0 4px 20px rgba(0,0,0,.2);
+    background: rgba(10, 14, 26, 0.95);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 4px 20px rgba(0,0,0,.5);
     padding: 1rem 1.5rem;
     min-height: 75px;
-    border-bottom: 2px solid rgba(212, 175, 55, 0.2);
+    border-bottom: 2px solid rgba(212, 175, 55, 0.3);
+    position: relative;
+    z-index: 1000;
 }
 
 .navbar-brand {
@@ -50,30 +191,30 @@ body {
     transform: scale(1.02);
 }
 
-.logo-container {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 50px;
-    height: 50px;
-    flex-shrink: 0;
-    filter: drop-shadow(0 2px 4px rgba(212, 175, 55, 0.3));
-}
-
 .precs-logo-text {
-    font-size: 1.4rem;
-    background: linear-gradient(135deg, #D4AF37 0%, #B8860B 50%, #8B6914 100%);
+    font-size: 1.5rem;
+    background: linear-gradient(135deg, #D4AF37 0%, #F5E08A 50%, #D4AF37 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
-    letter-spacing: 2px;
-    text-shadow: 0 2px 4px rgba(212, 175, 55, 0.2);
+    letter-spacing: 1px;
+    text-shadow: 0 0 20px rgba(212, 175, 55, 0.5);
     font-weight: 700;
+    animation: logoGlow 3s ease-in-out infinite;
+}
+
+@keyframes logoGlow {
+    0%, 100% {
+        filter: drop-shadow(0 0 5px rgba(212, 175, 55, 0.5));
+    }
+    50% {
+        filter: drop-shadow(0 0 15px rgba(212, 175, 55, 0.8));
+    }
 }
 
 .precs-subtitle {
     color: #a0a0a0;
-    font-size: 0.7rem;
+    font-size: 0.75rem;
     letter-spacing: 0.5px;
     margin-top: -2px;
 }
@@ -121,32 +262,33 @@ body {
 }
 
 .card {
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-    border: 1px solid #e9ecef;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(212, 175, 55, 0.2);
     border-radius: 12px;
     position: relative;
     z-index: 1;
-    background: #ffffff;
+    background: rgba(20, 25, 40, 0.9);
+    backdrop-filter: blur(10px);
     transition: all 0.3s ease;
     border-top: 3px solid transparent;
 }
 
 .card:hover {
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    box-shadow: 0 8px 30px rgba(212, 175, 55, 0.3);
     transform: translateY(-2px);
     border-top-color: #D4AF37;
-    border-color: #dee2e6;
+    border-color: rgba(212, 175, 55, 0.4);
 }
 
 .card-header {
-    background: #ffffff;
-    border-bottom: 2px solid #e9ecef;
+    background: rgba(15, 20, 35, 0.8);
+    border-bottom: 2px solid rgba(212, 175, 55, 0.3);
     padding: 1.25rem 1.5rem;
     border-radius: 12px 12px 0 0;
 }
 
 .card-header h6 {
-    color: #1a1a1a;
+    color: #ffffff;
     font-size: 1rem;
 }
 
@@ -159,8 +301,8 @@ body {
 }
 
 .table th {
-    background: #f8f9fa;
-    color: #1a1a1a;
+    background: rgba(15, 20, 35, 0.95);
+    color: #ffffff;
     font-weight: 700;
     font-size: 0.8125rem;
     border-bottom: 3px solid #D4AF37;
@@ -175,24 +317,30 @@ body {
     position: sticky;
     top: 0;
     z-index: 10;
-    background-color: #f8f9fa !important;
-    box-shadow: 0 2px 4px rgba(0,0,0,.08);
+    background-color: rgba(15, 20, 35, 0.95) !important;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 2px 8px rgba(0,0,0,.3);
 }
 
 .table td {
     padding: 0.75rem;
     vertical-align: middle;
-    border-color: #dee2e6;
+    border-color: rgba(212, 175, 55, 0.1);
     font-size: 0.875rem;
+    color: #e0e0e0;
 }
 
 .table-striped > tbody > tr:nth-of-type(odd) > td {
-    background: #f8f9fa;
+    background: rgba(20, 25, 40, 0.5);
 }
 
 .table-hover tbody tr:hover {
-    background: rgba(212, 175, 55, 0.05);
+    background: rgba(212, 175, 55, 0.15);
     transition: all 0.2s ease;
+}
+
+.table {
+    color: #e0e0e0;
 }
 
 /* Estilos para campos editáveis */
