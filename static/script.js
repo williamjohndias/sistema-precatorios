@@ -782,20 +782,32 @@ function setupSearchableSelect() {
         openDropdown();
     }, { signal: controller.signal });
     
-    // Busca no dropdown (adicionar listener apenas uma vez)
+    // Busca no dropdown com busca incremental no servidor (muito mais rápido)
     let searchHandlerAdded = false;
+    let searchTimeout = null;
     if (searchInput && !searchHandlerAdded) {
         searchInput.addEventListener('input', function() {
-            const searchTerm = this.value.toLowerCase().trim();
-            const allOptions = options.querySelectorAll('.searchable-select-option');
-            allOptions.forEach(option => {
-                const text = option.textContent.toLowerCase();
-                if (text.includes(searchTerm)) {
-                    option.classList.remove('hidden');
+            const searchTerm = this.value.trim();
+            
+            // Debounce: aguardar 300ms antes de buscar
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                if (searchTerm.length >= 2 || searchTerm.length === 0) {
+                    // Buscar no servidor se tiver 2+ caracteres ou estiver vazio
+                    loadFilterOptionsWithSearch('organizacao', searchTerm);
                 } else {
-                    option.classList.add('hidden');
+                    // Se tiver apenas 1 caractere, filtrar localmente
+                    const allOptions = options.querySelectorAll('.searchable-select-option');
+                    allOptions.forEach(option => {
+                        const text = option.textContent.toLowerCase();
+                        if (text.includes(searchTerm.toLowerCase())) {
+                            option.classList.remove('hidden');
+                        } else {
+                            option.classList.add('hidden');
+                        }
+                    });
                 }
-            });
+            }, 300);
         });
         searchHandlerAdded = true;
     }
@@ -1004,8 +1016,8 @@ function loadFilterOptionAsync(fieldName, selectElement = null) {
         }
     }
     
-    // Limite MUITO menor para velocidade máxima (20 para organização, 15 para outros)
-    const initialLimit = fieldName === 'organizacao' ? 20 : 15;
+    // Limite otimizado (30 para organização, 25 para outros)
+    const initialLimit = fieldName === 'organizacao' ? 30 : 25;
     
     // Mostrar indicador de carregamento
     if (fieldName === 'organizacao') {

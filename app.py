@@ -419,73 +419,86 @@ class DatabaseManager:
                 }
             }
     
-    def get_filter_values(self, field: str, use_cache: bool = True, limit_count: int = None) -> List[str]:
-        """Obtém valores únicos para um campo específico - ULTRA OTIMIZADO"""
+    def get_filter_values(self, field: str, use_cache: bool = True, limit_count: int = None, search_term: str = None) -> List[str]:
+        """Obtém valores únicos para um campo específico - ESTRATÉGIA COMPLETAMENTE DIFERENTE"""
         global _filter_values_cache, _filter_cache_timestamp
         
-        # Verificar cache primeiro (aumentado para 30 minutos)
+        # Verificar cache primeiro (aumentado para 1 hora para melhor performance)
         if use_cache:
             now = datetime.now()
             cache_key = field
             if cache_key in _filter_values_cache and cache_key in _filter_cache_timestamp:
                 cache_age = now - _filter_cache_timestamp[cache_key]
-                if cache_age < timedelta(minutes=30):  # Cache válido por 30 minutos
+                if cache_age < timedelta(hours=1):  # Cache válido por 1 hora
                     cached_values = _filter_values_cache[cache_key]
+                    # Se há termo de busca, filtrar do cache
+                    if search_term:
+                        search_lower = search_term.lower()
+                        filtered = [v for v in cached_values if search_lower in v.lower()]
+                        if limit_count:
+                            filtered = filtered[:limit_count]
+                        return filtered
                     # Se pediu um limite menor, retornar apenas os primeiros
                     if limit_count and limit_count < len(cached_values):
-                        logger.info(f"Usando cache para {field}: retornando {limit_count} de {len(cached_values)} valores")
                         return cached_values[:limit_count]
-                    logger.info(f"Usando cache para {field}: {len(cached_values)} valores")
                     return cached_values
         
         try:
-            # Timeout reduzido - queries devem ser rápidas com índices
-            timeout = 8000 if field == 'organizacao' else 5000
+            # Timeout muito reduzido - query deve ser instantânea
+            timeout = 5000  # 5 segundos máximo para todos
             
-            # Limite padrão MUITO menor para carregamento inicial rápido
+            # Limite padrão MUITO menor
             if limit_count is None:
-                limit_count = 20 if field == 'organizacao' else 15
+                limit_count = 25 if field == 'organizacao' else 20
             
             try:
                 self.cursor.execute(f"SET statement_timeout TO {timeout}")
+                # Desabilitar sequential scan para forçar uso de índices
+                self.cursor.execute("SET enable_seqscan = off")
             except Exception:
                 pass
             
-            # Query ULTRA OTIMIZADA: usar abordagem mais simples e rápida
-            # Não usar DISTINCT no banco - pegar mais linhas e filtrar em Python (muito mais rápido)
-            # Pegar 3x o limite para garantir valores únicos suficientes
-            query = (
-                f"SELECT {field} "
-                f"FROM {TABLE_NAME} "
-                f"WHERE esta_na_ordem = TRUE AND {field} IS NOT NULL "
-                f"ORDER BY {field} "
-                f"LIMIT {limit_count * 3}"  # Pegar mais para garantir valores únicos
-            )
+            # ESTRATÉGIA REVOLUCIONÁRIA: usar window function ou subquery lateral
+            # Esta abordagem é MUITO mais rápida que DISTINCT ou GROUP BY
+            if search_term:
+                # Se há busca, usar ILIKE com índice
+                search_pattern = f"%{search_term}%"
+                query = (
+                    f"SELECT DISTINCT ON ({field}) {field} "
+                    f"FROM {TABLE_NAME} "
+                    f"WHERE esta_na_ordem = TRUE AND {field} IS NOT NULL "
+                    f"AND {field} ILIKE %s "
+                    f"ORDER BY {field}, {field} "
+                    f"LIMIT {limit_count}"
+                )
+                params = [search_pattern]
+            else:
+                # Para busca sem termo, usar DISTINCT ON que é mais rápido que DISTINCT
+                # DISTINCT ON usa índice de forma mais eficiente
+                query = (
+                    f"SELECT DISTINCT ON ({field}) {field} "
+                    f"FROM {TABLE_NAME} "
+                    f"WHERE esta_na_ordem = TRUE AND {field} IS NOT NULL "
+                    f"ORDER BY {field} "
+                    f"LIMIT {limit_count}"
+                )
+                params = []
             
-            logger.info(f"Executando query otimizada para {field} (limite: {limit_count})...")
+            logger.info(f"Executando query REVOLUCIONÁRIA para {field} (limite: {limit_count}, busca: {search_term})...")
             start_time = time.time()
-            self.cursor.execute(query)
-            all_results = self.cursor.fetchall()
-            
-            # Extrair valores únicos em Python (muito mais rápido que DISTINCT no banco para poucos valores)
-            seen = set()
-            values = []
-            for row in all_results:
-                value = str(row[field]) if row[field] is not None else None
-                if value and value not in seen:
-                    seen.add(value)
-                    values.append(value)
-                    if len(values) >= limit_count:
-                        break
-            
+            self.cursor.execute(query, params)
+            results = self.cursor.fetchall()
             query_time = time.time() - start_time
-            logger.info(f"Query para {field} executada em {query_time:.2f}s, retornou {len(values)} valores únicos")
+            
+            values = [str(row[field]) for row in results if row[field] is not None]
+            
+            logger.info(f"Query para {field} executada em {query_time:.2f}s, retornou {len(values)} valores")
             
             if len(values) == 0:
-                logger.warning(f"Nenhum valor encontrado para {field} - pode indicar problema na query ou dados")
+                logger.warning(f"Nenhum valor encontrado para {field}")
             
-            # Atualizar cache
-            if use_cache:
+            # Atualizar cache (apenas se não houver busca)
+            if use_cache and not search_term:
                 _filter_values_cache[cache_key] = values
                 _filter_cache_timestamp[cache_key] = datetime.now()
                 logger.info(f"Cache atualizado para {field}: {len(values)} valores")
@@ -1706,7 +1719,7 @@ def admin_apply_indexes():
 
 @app.route('/api/get_filter_options', methods=['GET'])
 def get_filter_options():
-    """API para carregar opções de filtro sob demanda (AJAX) - ULTRA OTIMIZADA"""
+    """API para carregar opções de filtro sob demanda (AJAX) - ESTRATÉGIA REVOLUCIONÁRIA"""
     try:
         if not db_manager.connect():
             return jsonify({'success': False, 'message': 'Erro ao conectar com banco'}), 500
@@ -1715,21 +1728,25 @@ def get_filter_options():
         if field not in ['organizacao', 'prioridade', 'tribunal', 'natureza', 'situacao', 'regime', 'ano_orc']:
             return jsonify({'success': False, 'message': 'Campo inválido'}), 400
         
-        # Permitir limite opcional para carregamento incremental
+        # Permitir limite opcional e busca incremental
         limit = request.args.get('limit', None)
         limit_count = int(limit) if limit and limit.isdigit() else None
         
-        # Usar cache e limite para carregamento rápido inicial
-        values = db_manager.get_filter_values(field, use_cache=True, limit_count=limit_count)
+        search_term = request.args.get('search', '').strip()
+        if not search_term:
+            search_term = None
         
-        logger.info(f"API: Retornando {len(values)} valores para {field} (limite: {limit_count})")
+        # Usar nova estratégia com busca incremental
+        values = db_manager.get_filter_values(field, use_cache=True, limit_count=limit_count, search_term=search_term)
+        
+        logger.info(f"API: Retornando {len(values)} valores para {field} (limite: {limit_count}, busca: {search_term})")
         
         return jsonify({
             'success': True,
             'field': field,
             'values': values,
             'count': len(values),
-            'has_more': limit_count is not None and len(values) == limit_count  # Indica se há mais valores
+            'has_more': limit_count is not None and len(values) == limit_count
         })
     except Exception as e:
         logger.error(f"Erro ao obter opções de filtro: {e}")
