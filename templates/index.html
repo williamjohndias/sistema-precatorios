@@ -21,63 +21,81 @@
         <div class="justice-particle">📜</div>
         <div class="justice-particle">⚖</div>
     </div>
-    <nav class="navbar navbar-expand-lg navbar-dark precs-navbar border-bottom shadow-lg">
-        <div class="container-fluid">
+    <nav class="navbar navbar-expand-lg navbar-dark precs-navbar">
+        <div class="container-fluid px-4">
             <a class="navbar-brand d-flex align-items-center" href="{{ url_for('index') }}">
+                <div class="logo-icon me-3">
+                    <i class="fas fa-balance-scale"></i>
+                </div>
                 <div class="d-flex flex-column">
                     <span class="fw-bold precs-logo-text mb-0">Precs</span>
                     <span class="precs-subtitle small">Sistema de Precatórios</span>
                 </div>
             </a>
-            <div class="d-flex gap-2 align-items-center">
-                <a class="btn btn-outline-light btn-sm" href="{{ url_for('logs') }}">
-                    <i class="fas fa-history me-1"></i>Logs
+            <div class="d-flex gap-3 align-items-center">
+                <a class="btn btn-nav-action" href="{{ url_for('logs') }}">
+                    <i class="fas fa-history me-2"></i>Logs
                 </a>
-                <button class="btn btn-outline-light btn-sm" onclick="openBulkEditModal()">
-                    <i class="fas fa-edit me-1"></i>Edição em Massa
+                <button class="btn btn-nav-action" onclick="openBulkEditModal()">
+                    <i class="fas fa-edit me-2"></i>Edição em Massa
                 </button>
-                <button class="btn precs-btn-gold btn-sm" onclick="saveChanges()">
-                    <i class="fas fa-save me-1"></i>Salvar
+                <button class="btn precs-btn-gold" onclick="saveChanges()">
+                    <i class="fas fa-save me-2"></i>Salvar
                 </button>
-                <button class="btn btn-outline-light btn-sm" onclick="undoChanges()">
-                    <i class="fas fa-undo me-1"></i>Desfazer
+                <button class="btn btn-nav-action" onclick="undoChanges()">
+                    <i class="fas fa-undo me-2"></i>Desfazer
                 </button>
             </div>
         </div>
     </nav>
 
-    <div class="container-fluid mt-4">
+    <div class="main-container">
         <!-- Alertas -->
-        <div id="alertContainer"></div>
+        <div id="alertContainer" class="alert-container"></div>
 
-        <!-- Informações resumidas -->
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <div>
-                <h4 class="mb-2 fw-bold text-white">Ordem Cronológica de Precatórios</h4>
-                <div class="d-flex align-items-center gap-3">
-                    <div class="info-badge">
-                        <i class="fas fa-database text-primary me-2"></i>
-                        <span class="fw-semibold">{{ pagination.total_count }}</span>
-                        <span class="text-muted ms-1">registros totais</span>
+        <!-- Header Section -->
+        <div class="page-header">
+            <div class="header-content">
+                <div class="header-title-section">
+                    <h1 class="page-title">
+                        <i class="fas fa-list-ol me-3"></i>
+                        Ordem Cronológica de Precatórios
+                    </h1>
+                    <p class="page-subtitle">Gerencie e visualize todos os precatórios de forma organizada</p>
+                </div>
+                <div class="header-stats">
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-database"></i>
+                        </div>
+                        <div class="stat-content">
+                            <div class="stat-value">{{ pagination.total_count }}</div>
+                            <div class="stat-label">Total de Registros</div>
+                        </div>
                     </div>
-                    <div class="info-badge">
-                        <i class="fas fa-file-alt text-info me-2"></i>
-                        <span class="fw-semibold">{{ precatorios|length }}</span>
-                        <span class="text-muted ms-1">nesta página</span>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-file-alt"></i>
+                        </div>
+                        <div class="stat-content">
+                            <div class="stat-value">{{ precatorios|length }}</div>
+                            <div class="stat-label">Nesta Página</div>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
 
         <!-- Filtros -->
-        <div class="card mb-4" style="position: relative; z-index: 2;">
-            <div class="card-header bg-white border-bottom">
-                <h6 class="mb-0 fw-bold d-flex align-items-center">
-                    <i class="fas fa-filter me-2 precs-icon"></i>
-                    <span>Filtros de Busca</span>
-                </h6>
-            </div>
-            <div class="card-body p-4">
+        <div class="filters-section">
+            <div class="filters-card">
+                <div class="filters-header">
+                    <div class="filters-title">
+                        <i class="fas fa-filter me-2"></i>
+                        <span>Filtros de Busca</span>
+                    </div>
+                </div>
+                <div class="filters-body">
                 <form method="GET" id="filterForm" onsubmit="showFilterLoading()">
                     <div class="row g-3">
                         <div class="col-md-2">
@@ -228,22 +246,22 @@
         </div>
 
         <!-- Tabela de dados -->
-        <div class="row">
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center">
-                        <h6 class="mb-0 fw-bold d-flex align-items-center">
-                            <i class="fas fa-table me-2 precs-icon"></i>
-                            <span>Dados dos Precatórios</span>
-                        </h6>
-                        <div class="d-flex align-items-center gap-2">
-                            <span class="badge precs-badge rounded-pill px-3 py-2" id="modifiedCount">
-                                <i class="fas fa-edit me-1"></i>0 alterações
-                            </span>
-                        </div>
+        <div class="table-section">
+            <div class="table-card">
+                <div class="table-header">
+                    <div class="table-header-left">
+                        <i class="fas fa-table me-2"></i>
+                        <span>Dados dos Precatórios</span>
                     </div>
-                    <div class="card-body p-0">
-                        <div class="table-responsive" style="max-height: 70vh; overflow-y: auto; position: relative;">
+                    <div class="table-header-right">
+                        <span class="modifications-badge" id="modifiedCount">
+                            <i class="fas fa-edit me-2"></i>
+                            <span>0 alterações</span>
+                        </span>
+                    </div>
+                </div>
+                    <div class="table-body">
+                        <div class="table-responsive-wrapper">
                             <table class="table table-hover mb-0" id="dataTable">
                                 <thead class="table-header-sticky">
                                     <tr>
