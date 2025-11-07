@@ -51,16 +51,16 @@
                 </div>
             </a>
             <div class="d-flex gap-2 align-items-center">
-                <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('logs') }}">
+                <a class="btn btn-outline-light btn-sm" href="{{ url_for('logs') }}">
                     <i class="fas fa-history me-1"></i>Logs
                 </a>
-                <button class="btn btn-sm btn-outline-primary" onclick="openBulkEditModal()">
+                <button class="btn btn-outline-light btn-sm" onclick="openBulkEditModal()">
                     <i class="fas fa-edit me-1"></i>Edição em Massa
                 </button>
-                <button class="btn btn-sm btn-primary" onclick="saveChanges()">
+                <button class="btn precs-btn-gold btn-sm" onclick="saveChanges()">
                     <i class="fas fa-save me-1"></i>Salvar
                 </button>
-                <button class="btn btn-sm btn-outline-secondary" onclick="undoChanges()">
+                <button class="btn btn-outline-light btn-sm" onclick="undoChanges()">
                     <i class="fas fa-undo me-1"></i>Desfazer
                 </button>
             </div>
@@ -73,14 +73,19 @@
 
         <!-- Informações resumidas -->
         <div class="d-flex justify-content-between align-items-center mb-4">
-            <div class="d-flex align-items-center gap-3">
-                <div>
-                    <h5 class="mb-0 fw-semibold text-dark">Ordem Cronológica de Precatórios</h5>
-                    <p class="text-muted small mb-0 mt-1">
-                        <span>{{ pagination.total_count }} registros totais</span>
-                        <span class="mx-2">•</span>
-                        <span>{{ precatorios|length }} nesta página</span>
-                    </p>
+            <div>
+                <h4 class="mb-2 fw-bold text-dark">Ordem Cronológica de Precatórios</h4>
+                <div class="d-flex align-items-center gap-3">
+                    <div class="info-badge">
+                        <i class="fas fa-database text-primary me-2"></i>
+                        <span class="fw-semibold">{{ pagination.total_count }}</span>
+                        <span class="text-muted ms-1">registros totais</span>
+                    </div>
+                    <div class="info-badge">
+                        <i class="fas fa-file-alt text-info me-2"></i>
+                        <span class="fw-semibold">{{ precatorios|length }}</span>
+                        <span class="text-muted ms-1">nesta página</span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -88,8 +93,8 @@
         <!-- Filtros -->
         <div class="card mb-4" style="position: relative; z-index: 2;">
             <div class="card-header bg-white border-bottom">
-                <h6 class="mb-0 fw-semibold d-flex align-items-center">
-                    <i class="fas fa-filter me-2 text-primary"></i>
+                <h6 class="mb-0 fw-bold d-flex align-items-center">
+                    <i class="fas fa-filter me-2 precs-icon"></i>
                     <span>Filtros de Busca</span>
                 </h6>
             </div>
@@ -229,7 +234,7 @@
                                     </select>
                                 </div>
                                 <div class="col-md-5 d-flex align-items-end gap-2">
-                                    <button type="submit" class="btn btn-primary px-4">
+                                    <button type="submit" class="btn precs-btn-gold px-4">
                                         <i class="fas fa-search me-2"></i>Filtrar
                                     </button>
                                     <a href="{{ url_for('index') }}" class="btn btn-outline-secondary px-4">

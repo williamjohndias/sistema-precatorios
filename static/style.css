@@ -1,7 +1,7 @@
 /* Estilos para o Sistema de Precatórios */
 
 body {
-    background: linear-gradient(135deg, #f5f7fa 0%, #e9ecef 100%);
+    background: #f8f9fa;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
     min-height: 100vh;
 }
@@ -16,25 +16,28 @@ body {
 
 /* Badges de informação */
 .info-badge {
-    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+    background: #ffffff;
     padding: 0.75rem 1.25rem;
     border-radius: 8px;
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
     border-left: 3px solid #D4AF37;
     transition: all 0.2s ease;
+    border: 1px solid #e9ecef;
 }
 
 .info-badge:hover {
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     transform: translateY(-1px);
+    border-left-color: #B8860B;
 }
 
 /* Navbar com gradiente escuro estilo Precs */
 .precs-navbar {
     background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
-    box-shadow: 0 4px 12px rgba(0,0,0,.15);
-    padding: 0.75rem 1.5rem;
-    min-height: 70px;
+    box-shadow: 0 4px 20px rgba(0,0,0,.2);
+    padding: 1rem 1.5rem;
+    min-height: 75px;
+    border-bottom: 2px solid rgba(212, 175, 55, 0.2);
 }
 
 .navbar-brand {
@@ -75,6 +78,33 @@ body {
     margin-top: -2px;
 }
 
+/* Botão dourado Precs */
+.precs-btn-gold {
+    background: linear-gradient(135deg, #D4AF37 0%, #B8860B 100%);
+    color: #1a1a1a;
+    font-weight: 600;
+    border: none;
+    box-shadow: 0 2px 8px rgba(212, 175, 55, 0.3);
+    transition: all 0.3s ease;
+}
+
+.precs-btn-gold:hover {
+    background: linear-gradient(135deg, #B8860B 0%, #D4AF37 100%);
+    color: #1a1a1a;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(212, 175, 55, 0.4);
+}
+
+.precs-btn-gold:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 6px rgba(212, 175, 55, 0.3);
+}
+
+/* Ícone dourado */
+.precs-icon {
+    color: #D4AF37;
+}
+
 /* Badge personalizado Precs */
 .precs-badge {
     background: linear-gradient(135deg, #D4AF37 0%, #B8860B 100%);
@@ -91,31 +121,33 @@ body {
 }
 
 .card {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-    border: none;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    border: 1px solid #e9ecef;
     border-radius: 12px;
     position: relative;
     z-index: 1;
-    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+    background: #ffffff;
     transition: all 0.3s ease;
     border-top: 3px solid transparent;
 }
 
 .card:hover {
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
     transform: translateY(-2px);
     border-top-color: #D4AF37;
+    border-color: #dee2e6;
 }
 
 .card-header {
-    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+    background: #ffffff;
     border-bottom: 2px solid #e9ecef;
     padding: 1.25rem 1.5rem;
     border-radius: 12px 12px 0 0;
 }
 
 .card-header h6 {
-    color: #2d2d2d;
+    color: #1a1a1a;
+    font-size: 1rem;
 }
 
 .table-responsive {
@@ -127,15 +159,15 @@ body {
 }
 
 .table th {
-    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-    color: #2d2d2d;
+    background: #f8f9fa;
+    color: #1a1a1a;
     font-weight: 700;
     font-size: 0.8125rem;
     border-bottom: 3px solid #D4AF37;
     padding: 1rem 0.75rem;
     text-transform: none;
     white-space: nowrap;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.3px;
 }
 
 /* Cabeçalho sticky da tabela - dentro do container apenas */
@@ -155,12 +187,11 @@ body {
 }
 
 .table-striped > tbody > tr:nth-of-type(odd) > td {
-    background: linear-gradient(135deg, rgba(248, 249, 250, 0.5) 0%, rgba(233, 236, 239, 0.3) 100%);
+    background: #f8f9fa;
 }
 
 .table-hover tbody tr:hover {
-    background: linear-gradient(90deg, rgba(212, 175, 55, 0.08) 0%, rgba(212, 175, 55, 0.03) 100%);
-    transform: scale(1.001);
+    background: rgba(212, 175, 55, 0.05);
     transition: all 0.2s ease;
 }
 
