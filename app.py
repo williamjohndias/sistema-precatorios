@@ -1149,16 +1149,16 @@ def index():
             page = 1
             
         try:
-            # Paginação: 100 registros por página inicial (melhor performance)
+            # Paginação: 50 registros por página inicial (MÁXIMA performance)
             # Usuário pode aumentar se necessário via parâmetro per_page
-            per_page = int(request.args.get('per_page', 100))
+            per_page = int(request.args.get('per_page', 50))
             if per_page < 1:
-                per_page = 100
+                per_page = 50
             # Limite máximo de 2000 por página para manter boa performance
             if per_page > 2000:
                 per_page = 2000
         except (ValueError, TypeError):
-            per_page = 100
+            per_page = 50
         
         # Parâmetros de ordenação (padrão: ordenar pela coluna 'ordem')
         sort_field = request.args.get('sort', 'ordem')
@@ -1211,36 +1211,33 @@ def index():
         if 'esta_na_ordem' not in filters:
             filters['esta_na_ordem'] = 'true'
         
-        # PRIMEIRO: Carregar valores dos filtros (ANTES dos dados principais)
-        # Usar cache para melhor performance
-        # Carregar organização por último (pode ser mais lenta) para não bloquear outros filtros
-        logger.info("Carregando valores de filtros PRIMEIRO...")
-        start_filters = time.time()
+        # OTIMIZAÇÃO CRÍTICA: Carregar dados PRIMEIRO, filtros depois via AJAX
+        # Isso permite que a página apareça rapidamente enquanto filtros carregam em background
+        logger.info("Carregando dados principais PRIMEIRO (filtros via AJAX depois)...")
         
-        # Carregar filtros rápidos primeiro
+        # Inicializar filtros vazios - serão carregados via AJAX
         filter_values = {
-            'prioridade': db_manager.get_filter_values('prioridade', use_cache=True),
-            'tribunal': db_manager.get_filter_values('tribunal', use_cache=True),
-            'natureza': db_manager.get_filter_values('natureza', use_cache=True),
-            'situacao': db_manager.get_filter_values('situacao', use_cache=True),
-            'regime': db_manager.get_filter_values('regime', use_cache=True),
-            'ano_orc': db_manager.get_filter_values('ano_orc', use_cache=True),
-            'organizacao': []  # Carregar por último
+            'organizacao': [],
+            'prioridade': [],
+            'tribunal': [],
+            'natureza': [],
+            'situacao': [],
+            'regime': [],
+            'ano_orc': []
         }
         
-        # Carregar organização por último (pode demorar mais)
-        try:
-            logger.info("Carregando organização (pode demorar mais)...")
-            filter_values['organizacao'] = db_manager.get_filter_values('organizacao', use_cache=True)
-            logger.info(f"Organização carregada: {len(filter_values['organizacao'])} valores")
-        except Exception as e:
-            logger.error(f"Erro ao carregar organização: {e}")
-            filter_values['organizacao'] = []  # Deixar vazio se falhar
+        # Apenas carregar filtros que estão sendo usados (se houver filtro aplicado)
+        # Isso evita carregar todos os filtros desnecessariamente
+        for field in ['organizacao', 'prioridade', 'tribunal', 'natureza', 'situacao', 'regime', 'ano_orc']:
+            if filters.get(field):
+                try:
+                    filter_values[field] = db_manager.get_filter_values(field, use_cache=True)
+                    logger.info(f"Filtro {field} carregado: {len(filter_values[field])} valores (está sendo usado)")
+                except Exception as e:
+                    logger.warning(f"Erro ao carregar {field}: {e}")
+                    filter_values[field] = []
         
-        filters_time = time.time() - start_filters
-        logger.info(f"Filtros carregados em {filters_time:.2f}s - Total de opções: {sum(len(v) for v in filter_values.values())}")
-        
-        # DEPOIS: Obter dados paginados com ordenação
+        # Obter dados paginados com ordenação (PRIORIDADE MÁXIMA)
         try:
             result = db_manager.get_precatorios_paginated(page=page, per_page=per_page, filters=filters, sort_field=sort_field, sort_order=sort_order)
         except Exception as e:

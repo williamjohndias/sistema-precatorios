@@ -16,8 +16,11 @@ document.addEventListener('DOMContentLoaded', function() {
     setupDatalistClickable();
     reconfigureSearchableSelect = setupSearchableSelect();
     
-    // Os filtros já vêm carregados do servidor
-    // Não precisa fazer lazy loading - já estão disponíveis
+    // Carregar filtros via AJAX em paralelo (não bloqueia carregamento da página)
+    // Isso permite que a página apareça rapidamente
+    setTimeout(function() {
+        loadAllFiltersAsync();
+    }, 100); // Pequeno delay para não bloquear renderização inicial
 });
 
 // Inicializar tabela
@@ -964,29 +967,83 @@ function loadDropdownOptions(fields) {
     loadNext();
 }
 
-// Carregar todos os filtros apenas quando necessário (lazy loading)
-function setupLazyLoadAllFilters() {
-    // Configurar lazy loading para todos os selects
-    const filterSelects = document.querySelectorAll('select[name^="filter_"]');
+// Carregar todos os filtros via AJAX em paralelo (não bloqueia página)
+function loadAllFiltersAsync() {
+    const filterFields = ['organizacao', 'prioridade', 'tribunal', 'natureza', 'situacao', 'regime', 'ano_orc'];
     
-    filterSelects.forEach(select => {
-        // Verificar se já tem opções (mais que apenas a primeira opção padrão)
-        if (select.options.length > 1) {
-            return; // Já carregado
-        }
-        
-        // Extrair nome do campo do atributo name
-        const fieldName = select.name.replace('filter_', '');
-        
-        // Carregar quando o usuário abrir o select
-        select.addEventListener('focus', function() {
-            loadSingleFilterOption(fieldName, select);
-        }, { once: true });
-        
-        select.addEventListener('click', function() {
-            loadSingleFilterOption(fieldName, select);
-        }, { once: true });
+    // Carregar todos em paralelo
+    const promises = filterFields.map(field => {
+        return loadFilterOptionAsync(field);
     });
+    
+    // Aguardar todos carregarem (mas não bloquear UI)
+    Promise.allSettled(promises).then(results => {
+        const successCount = results.filter(r => r.status === 'fulfilled').length;
+        console.log(`Filtros carregados: ${successCount}/${filterFields.length}`);
+    });
+}
+
+// Carregar opção de filtro de forma assíncrona
+function loadFilterOptionAsync(fieldName) {
+    // Verificar se já está carregado
+    if (fieldName === 'organizacao') {
+        const optionsContainer = document.getElementById('organizacao_options');
+        if (optionsContainer && optionsContainer.querySelectorAll('.searchable-select-option').length > 1) {
+            return Promise.resolve(); // Já carregado
+        }
+    } else {
+        const select = document.querySelector(`select[name="filter_${fieldName}"]`);
+        if (select && select.options.length > 1) {
+            return Promise.resolve(); // Já carregado
+        }
+    }
+    
+    return fetch(`/api/get_filter_options?field=${fieldName}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.values && data.values.length > 0) {
+                if (fieldName === 'organizacao') {
+                    // Atualizar dropdown pesquisável de organização
+                    const optionsContainer = document.getElementById('organizacao_options');
+                    if (optionsContainer) {
+                        const firstOption = optionsContainer.querySelector('.searchable-select-option[data-value=""]');
+                        optionsContainer.innerHTML = '';
+                        if (firstOption) optionsContainer.appendChild(firstOption);
+                        
+                        data.values.forEach(value => {
+                            const option = document.createElement('div');
+                            option.className = 'searchable-select-option';
+                            option.dataset.value = value;
+                            option.textContent = value;
+                            optionsContainer.appendChild(option);
+                        });
+                        
+                        // Reconfigurar eventos
+                        if (reconfigureSearchableSelect) {
+                            reconfigureSearchableSelect();
+                        }
+                    }
+                } else {
+                    // Atualizar select normal
+                    const select = document.querySelector(`select[name="filter_${fieldName}"]`);
+                    if (select) {
+                        const firstOption = select.firstElementChild;
+                        select.innerHTML = '';
+                        if (firstOption) select.appendChild(firstOption);
+                        
+                        data.values.forEach(value => {
+                            const option = document.createElement('option');
+                            option.value = value;
+                            option.textContent = value;
+                            select.appendChild(option);
+                        });
+                    }
+                }
+            }
+        })
+        .catch(error => {
+            console.error(`Erro ao carregar filtro ${fieldName}:`, error);
+        });
 }
 
 // Carregar opções de um único filtro

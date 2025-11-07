@@ -103,9 +103,15 @@
                                             </div>
                                             <div class="searchable-select-options" id="organizacao_options">
                                                 <div class="searchable-select-option" data-value="">Todas as organizações</div>
-                                                {% for value in filter_values.organizacao %}
-                                                <div class="searchable-select-option" data-value="{{ value }}">{{ value }}</div>
-                                                {% endfor %}
+                                                {% if filter_values.organizacao %}
+                                                    {% for value in filter_values.organizacao %}
+                                                    <div class="searchable-select-option" data-value="{{ value }}">{{ value }}</div>
+                                                    {% endfor %}
+                                                {% else %}
+                                                    <div class="searchable-select-option" style="text-align: center; color: #6c757d;">
+                                                        <i class="fas fa-spinner fa-spin me-2"></i>Carregando...
+                                                    </div>
+                                                {% endif %}
                                             </div>
                                         </div>
                                     </div>
