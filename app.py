@@ -458,39 +458,50 @@ class DatabaseManager:
             except Exception:
                 pass
             
-            # ESTRATÉGIA REVOLUCIONÁRIA: usar window function ou subquery lateral
-            # Esta abordagem é MUITO mais rápida que DISTINCT ou GROUP BY
+            # ESTRATÉGIA REVOLUCIONÁRIA: usar uma query simples que aproveita índices
+            # Ao invés de DISTINCT (lento), usar uma subquery com window function ou simplesmente ORDER BY + LIMIT
+            # Para campos com poucos valores únicos, pegar mais linhas e filtrar em Python é mais rápido
             if search_term:
-                # Se há busca, usar ILIKE com índice
+                # Se há busca, usar ILIKE - mas limitar resultados para velocidade
                 search_pattern = f"%{search_term}%"
+                # Pegar mais linhas para garantir valores únicos suficientes
                 query = (
-                    f"SELECT DISTINCT ON ({field}) {field} "
+                    f"SELECT {field} "
                     f"FROM {TABLE_NAME} "
                     f"WHERE esta_na_ordem = TRUE AND {field} IS NOT NULL "
                     f"AND {field} ILIKE %s "
-                    f"ORDER BY {field}, {field} "
-                    f"LIMIT {limit_count}"
+                    f"ORDER BY {field} "
+                    f"LIMIT {limit_count * 5}"  # Pegar 5x mais para garantir únicos
                 )
                 params = [search_pattern]
             else:
-                # Para busca sem termo, usar DISTINCT ON que é mais rápido que DISTINCT
-                # DISTINCT ON usa índice de forma mais eficiente
+                # Estratégia: pegar primeiras linhas ordenadas (muito rápido com índice)
+                # Filtrar únicos em Python (mais rápido que DISTINCT no banco para poucos valores)
                 query = (
-                    f"SELECT DISTINCT ON ({field}) {field} "
+                    f"SELECT {field} "
                     f"FROM {TABLE_NAME} "
                     f"WHERE esta_na_ordem = TRUE AND {field} IS NOT NULL "
                     f"ORDER BY {field} "
-                    f"LIMIT {limit_count}"
+                    f"LIMIT {limit_count * 3}"  # Pegar 3x mais para garantir únicos
                 )
                 params = []
             
             logger.info(f"Executando query REVOLUCIONÁRIA para {field} (limite: {limit_count}, busca: {search_term})...")
             start_time = time.time()
             self.cursor.execute(query, params)
-            results = self.cursor.fetchall()
+            all_results = self.cursor.fetchall()
             query_time = time.time() - start_time
             
-            values = [str(row[field]) for row in results if row[field] is not None]
+            # Extrair valores únicos em Python (muito mais rápido que DISTINCT no banco)
+            seen = set()
+            values = []
+            for row in all_results:
+                value = str(row[field]) if row[field] is not None else None
+                if value and value not in seen:
+                    seen.add(value)
+                    values.append(value)
+                    if len(values) >= limit_count:
+                        break
             
             logger.info(f"Query para {field} executada em {query_time:.2f}s, retornou {len(values)} valores")
             

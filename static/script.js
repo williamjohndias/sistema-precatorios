@@ -1001,6 +1001,74 @@ function setupLazyFilterLoading() {
     // Para organização (dropdown pesquisável), já está configurado em setupSearchableSelect
 }
 
+// Carregar opções com busca incremental no servidor (muito mais rápido)
+function loadFilterOptionsWithSearch(fieldName, searchTerm = '') {
+    const limit = fieldName === 'organizacao' ? 30 : 25;
+    const url = `/api/get_filter_options?field=${fieldName}&limit=${limit}${searchTerm ? '&search=' + encodeURIComponent(searchTerm) : ''}`;
+    
+    const optionsContainer = document.getElementById('organizacao_options');
+    if (optionsContainer) {
+        // Mostrar loading
+        const existingLoading = optionsContainer.querySelector('.loading-indicator');
+        if (!existingLoading) {
+            const loadingDiv = document.createElement('div');
+            loadingDiv.className = 'searchable-select-option loading-indicator';
+            loadingDiv.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Buscando...';
+            loadingDiv.style.textAlign = 'center';
+            loadingDiv.style.color = '#6c757d';
+            optionsContainer.appendChild(loadingDiv);
+        }
+    }
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 segundos
+    
+    fetch(url, { signal: controller.signal })
+        .then(response => {
+            clearTimeout(timeoutId);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            return response.json();
+        })
+        .then(data => {
+            const optionsContainer = document.getElementById('organizacao_options');
+            if (optionsContainer) {
+                const loading = optionsContainer.querySelector('.loading-indicator');
+                if (loading) loading.remove();
+                
+                const firstOption = optionsContainer.querySelector('.searchable-select-option[data-value=""]');
+                optionsContainer.innerHTML = '';
+                if (firstOption) optionsContainer.appendChild(firstOption);
+                
+                if (data.success && data.values && data.values.length > 0) {
+                    data.values.forEach(value => {
+                        const option = document.createElement('div');
+                        option.className = 'searchable-select-option';
+                        option.dataset.value = value;
+                        option.textContent = value;
+                        optionsContainer.appendChild(option);
+                    });
+                } else {
+                    const noResults = document.createElement('div');
+                    noResults.className = 'searchable-select-option';
+                    noResults.textContent = 'Nenhum resultado encontrado';
+                    noResults.style.textAlign = 'center';
+                    noResults.style.color = '#6c757d';
+                    optionsContainer.appendChild(noResults);
+                }
+                
+                if (reconfigureSearchableSelect) {
+                    reconfigureSearchableSelect();
+                }
+            }
+        })
+        .catch(error => {
+            clearTimeout(timeoutId);
+            if (error.name !== 'AbortError') {
+                console.error(`Erro ao buscar ${fieldName}:`, error);
+            }
+        });
+}
+
 // Carregar opção de filtro de forma assíncrona (com limite MUITO menor e retry)
 function loadFilterOptionAsync(fieldName, selectElement = null) {
     // Verificar se já está carregado
