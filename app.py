@@ -1279,11 +1279,10 @@ def index():
         if 'esta_na_ordem' not in filters:
             filters['esta_na_ordem'] = 'true'
         
-        # OTIMIZAÇÃO CRÍTICA: Carregar dados PRIMEIRO, filtros depois via AJAX
-        # Isso permite que a página apareça rapidamente enquanto filtros carregam em background
-        logger.info("Carregando dados principais PRIMEIRO (filtros via AJAX depois)...")
+        # CARREGAR TODOS OS FILTROS NO SERVIDOR (FIXO) - sem AJAX
+        # Isso garante que todos os valores estejam disponíveis imediatamente
+        logger.info("Carregando TODOS os valores dos filtros no servidor...")
         
-        # Inicializar filtros vazios - serão carregados via AJAX
         filter_values = {
             'organizacao': [],
             'prioridade': [],
@@ -1294,16 +1293,21 @@ def index():
             'ano_orc': []
         }
         
-        # Apenas carregar filtros que estão sendo usados (se houver filtro aplicado)
-        # Isso evita carregar todos os filtros desnecessariamente
-        for field in ['organizacao', 'prioridade', 'tribunal', 'natureza', 'situacao', 'regime', 'ano_orc']:
-            if filters.get(field):
-                try:
-                    filter_values[field] = db_manager.get_filter_values(field, use_cache=True)
-                    logger.info(f"Filtro {field} carregado: {len(filter_values[field])} valores (está sendo usado)")
-                except Exception as e:
-                    logger.warning(f"Erro ao carregar {field}: {e}")
-                    filter_values[field] = []
+        # Carregar TODOS os filtros usando cache (muito rápido)
+        filter_fields = ['organizacao', 'prioridade', 'tribunal', 'natureza', 'situacao', 'regime', 'ano_orc']
+        for field in filter_fields:
+            try:
+                # Para organização, usar limite maior (200)
+                # Para outros campos, carregar todos (sem limite)
+                if field == 'organizacao':
+                    filter_values[field] = db_manager.get_filter_values(field, use_cache=True, limit_count=200)
+                else:
+                    # Campos pequenos: carregar todos (sem limite)
+                    filter_values[field] = db_manager.get_filter_values(field, use_cache=True, limit_count=None)
+                logger.info(f"Filtro {field} carregado: {len(filter_values[field])} valores")
+            except Exception as e:
+                logger.warning(f"Erro ao carregar {field}: {e}")
+                filter_values[field] = []
         
         # Obter dados paginados com ordenação (PRIORIDADE MÁXIMA)
         try:

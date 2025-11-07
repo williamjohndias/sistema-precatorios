@@ -16,9 +16,8 @@ document.addEventListener('DOMContentLoaded', function() {
     setupDatalistClickable();
     reconfigureSearchableSelect = setupSearchableSelect();
     
-    // NÃO carregar filtros automaticamente - apenas quando usuário clicar
-    // Isso garante que a página carregue instantaneamente
-    setupLazyFilterLoading();
+    // Filtros já são carregados no servidor - não precisa carregar via AJAX
+    // Apenas configurar busca incremental para organização (quando usuário digita)
 });
 
 // Inicializar tabela
@@ -977,29 +976,8 @@ function loadDropdownOptions(fields) {
     loadNext();
 }
 
-// Configurar carregamento lazy de filtros (apenas quando usuário clicar)
-function setupLazyFilterLoading() {
-    // Para selects normais
-    const filterSelects = document.querySelectorAll('select[name^="filter_"]');
-    filterSelects.forEach(select => {
-        const fieldName = select.name.replace('filter_', '');
-        
-        // Carregar apenas quando usuário abrir o select
-        select.addEventListener('focus', function() {
-            if (select.options.length <= 1) { // Apenas a opção padrão
-                loadFilterOptionAsync(fieldName, select);
-            }
-        }, { once: true });
-        
-        select.addEventListener('click', function() {
-            if (select.options.length <= 1) { // Apenas a opção padrão
-                loadFilterOptionAsync(fieldName, select);
-            }
-        }, { once: true });
-    });
-    
-    // Para organização (dropdown pesquisável), já está configurado em setupSearchableSelect
-}
+// Filtros são carregados no servidor - não precisa carregar via AJAX
+// Esta função foi removida pois os valores já vêm do servidor
 
 // Carregar opções com busca incremental no servidor (muito mais rápido)
 function loadFilterOptionsWithSearch(fieldName, searchTerm = '') {
