@@ -69,96 +69,96 @@
                                    value="{{ filters.get('ordem', '') }}"
                                    placeholder="Buscar...">
                         </div>
-                                <div class="col-md-4">
-                                    <label class="form-label small fw-semibold text-muted mb-1">Organização</label>
-                                    <div class="searchable-select-wrapper">
+                        <div class="col-md-4">
+                            <label class="form-label small fw-semibold text-muted mb-1">Organização</label>
+                            <div class="searchable-select-wrapper">
+                                <input type="text" 
+                                       class="form-control form-control-sm searchable-select-input" 
+                                       id="filter_organizacao_input"
+                                       placeholder="Selecione uma organização..."
+                                       autocomplete="off"
+                                       value="{{ filters.get('organizacao', '') if filters.get('organizacao') else '' }}">
+                                <input type="hidden" 
+                                       name="filter_organizacao" 
+                                       id="filter_organizacao_hidden"
+                                       value="{{ filters.get('organizacao', '') }}">
+                                <div class="searchable-select-dropdown" id="organizacao_dropdown" style="display: none;">
+                                    <div class="searchable-select-search">
                                         <input type="text" 
-                                               class="form-control form-control-sm searchable-select-input" 
-                                               id="filter_organizacao_input"
-                                               placeholder="Selecione uma organização..."
-                                               autocomplete="off"
-                                               value="{{ filters.get('organizacao', '') if filters.get('organizacao') else '' }}">
-                                        <input type="hidden" 
-                                               name="filter_organizacao" 
-                                               id="filter_organizacao_hidden"
-                                               value="{{ filters.get('organizacao', '') }}">
-                                        <div class="searchable-select-dropdown" id="organizacao_dropdown" style="display: none;">
-                                            <div class="searchable-select-search">
-                                                <input type="text" 
-                                                       class="form-control form-control-sm" 
-                                                       id="organizacao_search"
-                                                       placeholder="Digite para buscar..."
-                                                       autocomplete="off">
+                                               class="form-control form-control-sm" 
+                                               id="organizacao_search"
+                                               placeholder="Digite para buscar..."
+                                               autocomplete="off">
+                                    </div>
+                                    <div class="searchable-select-options" id="organizacao_options" style="max-height: 300px; overflow-y: auto;">
+                                        <div class="searchable-select-option" data-value="">Todas as organizações</div>
+                                        {% if filter_values.organizacao %}
+                                            {% for value in filter_values.organizacao %}
+                                            <div class="searchable-select-option" data-value="{{ value }}">{{ value }}</div>
+                                            {% endfor %}
+                                        {% else %}
+                                            <div class="searchable-select-option" style="text-align: center; color: #6c757d;">
+                                                <i class="fas fa-spinner fa-spin me-2"></i>Carregando...
                                             </div>
-                                            <div class="searchable-select-options" id="organizacao_options" style="max-height: 300px; overflow-y: auto;">
-                                                <div class="searchable-select-option" data-value="">Todas as organizações</div>
-                                                {% if filter_values.organizacao %}
-                                                    {% for value in filter_values.organizacao %}
-                                                    <div class="searchable-select-option" data-value="{{ value }}">{{ value }}</div>
-                                                    {% endfor %}
-                                                {% else %}
-                                                    <div class="searchable-select-option" style="text-align: center; color: #6c757d;">
-                                                        <i class="fas fa-spinner fa-spin me-2"></i>Carregando...
-                                                    </div>
-                                                {% endif %}
-                                            </div>
-                                        </div>
+                                        {% endif %}
                                     </div>
                                 </div>
-                                <div class="col-md-2">
-                                    <label class="form-label small fw-semibold text-muted mb-1">Prioridade</label>
-                                    <select class="form-select form-select-sm" name="filter_prioridade">
-                                        <option value="">Todas</option>
-                                        {% for value in filter_values.prioridade %}
-                                        <option value="{{ value }}" {% if filters.get('prioridade') == value %}selected{% endif %}>{{ value }}</option>
-                                        {% endfor %}
-                                    </select>
-                                </div>
-                                <div class="col-md-2">
-                                    <label class="form-label small fw-semibold text-muted mb-1">Natureza</label>
-                                    <select class="form-select form-select-sm" name="filter_natureza">
-                                        <option value="">Todas</option>
-                                        {% for value in filter_values.natureza %}
-                                        <option value="{{ value }}" {% if filters.get('natureza') == value %}selected{% endif %}>{{ value }}</option>
-                                        {% endfor %}
-                                    </select>
-                                </div>
-                                <div class="col-md-2">
-                                    <label class="form-label small fw-semibold text-muted mb-1">Tribunal</label>
-                                    <select class="form-select form-select-sm" name="filter_tribunal">
-                                        <option value="">Todos</option>
-                                        {% for value in filter_values.tribunal %}
-                                        <option value="{{ value }}" {% if filters.get('tribunal') == value %}selected{% endif %}>{{ value }}</option>
-                                        {% endfor %}
-                                    </select>
-                                </div>
-                                <div class="col-md-2">
-                                    <label class="form-label small fw-semibold text-muted mb-1">Situação</label>
-                                    <select class="form-select form-select-sm" name="filter_situacao">
-                                        <option value="">Todas</option>
-                                        {% for value in filter_values.situacao %}
-                                        <option value="{{ value }}" {% if filters.get('situacao') == value %}selected{% endif %}>{{ value }}</option>
-                                        {% endfor %}
-                                    </select>
-                                </div>
-                                <div class="col-md-2">
-                                    <label class="form-label small fw-semibold text-muted mb-1">Ano</label>
-                                    <select class="form-select form-select-sm" name="filter_ano_orc">
-                                        <option value="">Todos</option>
-                                        {% for value in filter_values.ano_orc %}
-                                        <option value="{{ value }}" {% if filters.get('ano_orc') == value %}selected{% endif %}>{{ value }}</option>
-                                        {% endfor %}
-                                    </select>
-                                </div>
-                                <div class="col-md-2">
-                                    <label class="form-label small fw-semibold text-muted mb-1">Regime</label>
-                                    <select class="form-select form-select-sm" name="filter_regime">
-                                        <option value="">Todos</option>
-                                        {% for value in filter_values.regime %}
-                                        <option value="{{ value }}" {% if filters.get('regime') == value %}selected{% endif %}>{{ value }}</option>
-                                        {% endfor %}
-                                    </select>
-                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small fw-semibold text-muted mb-1">Prioridade</label>
+                            <select class="form-select form-select-sm" name="filter_prioridade">
+                                <option value="">Todas</option>
+                                {% for value in filter_values.prioridade %}
+                                <option value="{{ value }}" {% if filters.get('prioridade') == value %}selected{% endif %}>{{ value }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small fw-semibold text-muted mb-1">Natureza</label>
+                            <select class="form-select form-select-sm" name="filter_natureza">
+                                <option value="">Todas</option>
+                                {% for value in filter_values.natureza %}
+                                <option value="{{ value }}" {% if filters.get('natureza') == value %}selected{% endif %}>{{ value }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small fw-semibold text-muted mb-1">Tribunal</label>
+                            <select class="form-select form-select-sm" name="filter_tribunal">
+                                <option value="">Todos</option>
+                                {% for value in filter_values.tribunal %}
+                                <option value="{{ value }}" {% if filters.get('tribunal') == value %}selected{% endif %}>{{ value }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small fw-semibold text-muted mb-1">Situação</label>
+                            <select class="form-select form-select-sm" name="filter_situacao">
+                                <option value="">Todas</option>
+                                {% for value in filter_values.situacao %}
+                                <option value="{{ value }}" {% if filters.get('situacao') == value %}selected{% endif %}>{{ value }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small fw-semibold text-muted mb-1">Ano</label>
+                            <select class="form-select form-select-sm" name="filter_ano_orc">
+                                <option value="">Todos</option>
+                                {% for value in filter_values.ano_orc %}
+                                <option value="{{ value }}" {% if filters.get('ano_orc') == value %}selected{% endif %}>{{ value }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small fw-semibold text-muted mb-1">Regime</label>
+                            <select class="form-select form-select-sm" name="filter_regime">
+                                <option value="">Todos</option>
+                                {% for value in filter_values.regime %}
+                                <option value="{{ value }}" {% if filters.get('regime') == value %}selected{% endif %}>{{ value }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
                             </div>
                             <div class="row g-3 mt-1">
                                 <div class="col-md-3">
