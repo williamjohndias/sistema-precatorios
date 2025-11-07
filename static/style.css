@@ -973,17 +973,20 @@ input[list]:hover {
 
 .searchable-select-input {
     cursor: pointer;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23999' d='M10.293 3.293L6 7.586 1.707 3.293A1 1 0 00.293 4.707l5 5a1 1 0 001.414 0l5-5a1 1 0 10-1.414-1.414z'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23D4AF37' d='M10.293 3.293L6 7.586 1.707 3.293A1 1 0 00.293 4.707l5 5a1 1 0 001.414 0l5-5a1 1 0 10-1.414-1.414z'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 0.5rem center;
     background-size: 12px;
     padding-right: 2rem;
-    background-color: white;
+    background-color: rgba(15, 20, 28, 0.8);
+    color: #ffffff;
+    border: 1px solid rgba(212, 175, 55, 0.2);
 }
 
 .searchable-select-input[readonly] {
     cursor: pointer;
-    background-color: white;
+    background-color: rgba(15, 20, 28, 0.8);
+    color: #ffffff;
 }
 
 .searchable-select-input:focus {
@@ -995,10 +998,11 @@ input[list]:hover {
     top: 100%;
     left: 0;
     right: 0;
-    background: white;
-    border: 1px solid #ced4da;
+    background: rgba(15, 20, 28, 0.95);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(212, 175, 55, 0.3);
     border-radius: 0.375rem;
-    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
     z-index: 1000;
     margin-top: 0.25rem;
     max-height: 300px;
@@ -1009,13 +1013,26 @@ input[list]:hover {
 
 .searchable-select-search {
     padding: 0.5rem;
-    border-bottom: 1px solid #dee2e6;
-    background: #f8f9fa;
+    border-bottom: 1px solid rgba(212, 175, 55, 0.2);
+    background: rgba(10, 15, 22, 0.8);
 }
 
 .searchable-select-search input {
     width: 100%;
     margin: 0;
+    background: rgba(15, 20, 28, 0.8);
+    border: 1px solid rgba(212, 175, 55, 0.2);
+    color: #ffffff;
+}
+
+.searchable-select-search input:focus {
+    background: rgba(10, 15, 22, 0.95);
+    border-color: #D4AF37;
+    color: #ffffff;
+}
+
+.searchable-select-search input::placeholder {
+    color: #999;
 }
 
 .searchable-select-options {
@@ -1027,16 +1044,17 @@ input[list]:hover {
     padding: 0.5rem 0.75rem;
     cursor: pointer;
     transition: background-color 0.15s ease-in-out;
-    border-bottom: 1px solid #f8f9fa;
+    border-bottom: 1px solid rgba(212, 175, 55, 0.1);
+    color: #ffffff;
 }
 
 .searchable-select-option:hover {
-    background-color: #f8f9fa;
+    background-color: rgba(212, 175, 55, 0.15);
 }
 
 .searchable-select-option.selected {
-    background-color: #D2AF52;
-    color: #000;
+    background-color: rgba(212, 175, 55, 0.3);
+    color: #ffffff;
     font-weight: 600;
 }
 
