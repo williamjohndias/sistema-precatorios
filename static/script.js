@@ -1003,8 +1003,11 @@ function setupLazyFilterLoading() {
 
 // Carregar opções com busca incremental no servidor (muito mais rápido)
 function loadFilterOptionsWithSearch(fieldName, searchTerm = '') {
-    const limit = fieldName === 'organizacao' ? 30 : 25;
-    const url = `/api/get_filter_options?field=${fieldName}&limit=${limit}${searchTerm ? '&search=' + encodeURIComponent(searchTerm) : ''}`;
+    // Para campos pequenos, não usar limite (carregar todos)
+    // Para organização, usar limite maior
+    const limit = fieldName === 'organizacao' ? 200 : null; // null = sem limite
+    const limitParam = limit !== null ? `&limit=${limit}` : '';
+    const url = `/api/get_filter_options?field=${fieldName}${limitParam}${searchTerm ? '&search=' + encodeURIComponent(searchTerm) : ''}`;
     
     const optionsContainer = document.getElementById('organizacao_options');
     if (optionsContainer) {
@@ -1084,8 +1087,9 @@ function loadFilterOptionAsync(fieldName, selectElement = null) {
         }
     }
     
-    // Limite otimizado (30 para organização, 25 para outros)
-    const initialLimit = fieldName === 'organizacao' ? 30 : 25;
+    // Para campos pequenos, carregar TODOS (sem limite)
+    // Para organização, carregar 200 inicialmente
+    const initialLimit = fieldName === 'organizacao' ? 200 : null; // null = sem limite
     
     // Mostrar indicador de carregamento
     if (fieldName === 'organizacao') {
@@ -1116,7 +1120,11 @@ function loadFilterOptionAsync(fieldName, selectElement = null) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 segundos timeout
     
-    return fetch(`/api/get_filter_options?field=${fieldName}&limit=${initialLimit}`, {
+    // Construir URL com limite apenas se não for null
+    const limitParam = initialLimit !== null ? `&limit=${initialLimit}` : '';
+    const url = `/api/get_filter_options?field=${fieldName}${limitParam}`;
+    
+    return fetch(url, {
         signal: controller.signal
     })
         .then(response => {

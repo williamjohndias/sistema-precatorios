@@ -420,8 +420,12 @@ class DatabaseManager:
             }
     
     def get_filter_values(self, field: str, use_cache: bool = True, limit_count: int = None, search_term: str = None) -> List[str]:
-        """Obtém valores únicos para um campo específico - ESTRATÉGIA COMPLETAMENTE DIFERENTE"""
+        """Obtém valores únicos para um campo específico - ESTRATÉGIA OTIMIZADA"""
         global _filter_values_cache, _filter_cache_timestamp
+        
+        # Campos pequenos: carregar TODOS de uma vez (prioridade, tribunal, natureza, regime, situacao)
+        small_fields = ['prioridade', 'tribunal', 'natureza', 'regime', 'situacao', 'ano_orc']
+        is_small_field = field in small_fields
         
         # Verificar cache primeiro (aumentado para 1 hora para melhor performance)
         if use_cache:
@@ -444,12 +448,16 @@ class DatabaseManager:
                     return cached_values
         
         try:
-            # Timeout muito reduzido - query deve ser instantânea
-            timeout = 5000  # 5 segundos máximo para todos
+            # Timeout ajustado por tipo de campo
+            timeout = 15000 if field == 'organizacao' else 8000  # Mais tempo para organização
             
-            # Limite padrão MUITO menor
+            # Para campos pequenos, SEM limite (carregar todos)
+            # Para organização, usar limite maior inicialmente
             if limit_count is None:
-                limit_count = 25 if field == 'organizacao' else 20
+                if is_small_field:
+                    limit_count = 1000  # Praticamente sem limite para campos pequenos
+                else:
+                    limit_count = 200  # Limite maior para organização
             
             try:
                 self.cursor.execute(f"SET statement_timeout TO {timeout}")
@@ -458,50 +466,76 @@ class DatabaseManager:
             except Exception:
                 pass
             
-            # ESTRATÉGIA REVOLUCIONÁRIA: usar uma query simples que aproveita índices
-            # Ao invés de DISTINCT (lento), usar uma subquery com window function ou simplesmente ORDER BY + LIMIT
-            # Para campos com poucos valores únicos, pegar mais linhas e filtrar em Python é mais rápido
+            # ESTRATÉGIA OTIMIZADA: usar GROUP BY para campos pequenos (mais rápido)
+            # Para organização, usar ORDER BY + LIMIT e filtrar únicos em Python
             if search_term:
-                # Se há busca, usar ILIKE - mas limitar resultados para velocidade
+                # Se há busca, usar ILIKE
                 search_pattern = f"%{search_term}%"
-                # Pegar mais linhas para garantir valores únicos suficientes
-                query = (
-                    f"SELECT {field} "
-                    f"FROM {TABLE_NAME} "
-                    f"WHERE esta_na_ordem = TRUE AND {field} IS NOT NULL "
-                    f"AND {field} ILIKE %s "
-                    f"ORDER BY {field} "
-                    f"LIMIT {limit_count * 5}"  # Pegar 5x mais para garantir únicos
-                )
+                if is_small_field:
+                    # Para campos pequenos, usar GROUP BY (mais eficiente)
+                    query = (
+                        f"SELECT {field} "
+                        f"FROM {TABLE_NAME} "
+                        f"WHERE esta_na_ordem = TRUE AND {field} IS NOT NULL "
+                        f"AND {field} ILIKE %s "
+                        f"GROUP BY {field} "
+                        f"ORDER BY {field} "
+                        f"LIMIT {limit_count}"
+                    )
+                else:
+                    # Para organização, pegar mais linhas e filtrar únicos
+                    query = (
+                        f"SELECT {field} "
+                        f"FROM {TABLE_NAME} "
+                        f"WHERE esta_na_ordem = TRUE AND {field} IS NOT NULL "
+                        f"AND {field} ILIKE %s "
+                        f"ORDER BY {field} "
+                        f"LIMIT {limit_count * 5}"  # Pegar 5x mais para garantir únicos
+                    )
                 params = [search_pattern]
             else:
-                # Estratégia: pegar primeiras linhas ordenadas (muito rápido com índice)
-                # Filtrar únicos em Python (mais rápido que DISTINCT no banco para poucos valores)
-                query = (
-                    f"SELECT {field} "
-                    f"FROM {TABLE_NAME} "
-                    f"WHERE esta_na_ordem = TRUE AND {field} IS NOT NULL "
-                    f"ORDER BY {field} "
-                    f"LIMIT {limit_count * 3}"  # Pegar 3x mais para garantir únicos
-                )
+                if is_small_field:
+                    # Para campos pequenos, usar GROUP BY (muito mais rápido que DISTINCT)
+                    query = (
+                        f"SELECT {field} "
+                        f"FROM {TABLE_NAME} "
+                        f"WHERE esta_na_ordem = TRUE AND {field} IS NOT NULL "
+                        f"GROUP BY {field} "
+                        f"ORDER BY {field}"
+                    )
+                    # Sem LIMIT para campos pequenos - queremos TODOS
+                else:
+                    # Para organização, pegar mais linhas e filtrar únicos em Python
+                    query = (
+                        f"SELECT {field} "
+                        f"FROM {TABLE_NAME} "
+                        f"WHERE esta_na_ordem = TRUE AND {field} IS NOT NULL "
+                        f"ORDER BY {field} "
+                        f"LIMIT {limit_count * 3}"  # Pegar 3x mais para garantir únicos
+                    )
                 params = []
             
-            logger.info(f"Executando query REVOLUCIONÁRIA para {field} (limite: {limit_count}, busca: {search_term})...")
+            logger.info(f"Executando query otimizada para {field} (limite: {limit_count}, busca: {search_term}, campo pequeno: {is_small_field})...")
             start_time = time.time()
             self.cursor.execute(query, params)
             all_results = self.cursor.fetchall()
             query_time = time.time() - start_time
             
-            # Extrair valores únicos em Python (muito mais rápido que DISTINCT no banco)
-            seen = set()
-            values = []
-            for row in all_results:
-                value = str(row[field]) if row[field] is not None else None
-                if value and value not in seen:
-                    seen.add(value)
-                    values.append(value)
-                    if len(values) >= limit_count:
-                        break
+            # Para campos pequenos, já vem único do GROUP BY
+            # Para organização, filtrar únicos em Python
+            if is_small_field:
+                values = [str(row[field]) for row in all_results if row[field] is not None]
+            else:
+                # Extrair valores únicos em Python
+                seen = set()
+                values = []
+                for row in all_results:
+                    value = str(row[field]) if row[field] is not None else None
+                    if value and value not in seen:
+                        seen.add(value)
+                        values.append(value)
+                        if len(values) >= limit_count:
+                            break
             
             logger.info(f"Query para {field} executada em {query_time:.2f}s, retornou {len(values)} valores")
             
