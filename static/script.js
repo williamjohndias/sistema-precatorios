@@ -1030,13 +1030,23 @@ function setupDynamicFilters() {
     }
     
     // Função para atualizar um filtro específico baseado em TODOS os filtros ativos
-    function updateFilter(fieldName, skipField = null) {
+    function updateFilter(fieldName, skipField = null, forceUpdate = false) {
         if (fieldName === skipField) return;
         
         const activeFilters = getAllActiveFilters();
         const select = document.querySelector(`select[name="filter_${fieldName}"]`);
         
-        if (!select) return;
+        if (!select) {
+            console.warn(`Select não encontrado para ${fieldName}`);
+            return;
+        }
+        
+        // Se não há filtros ativos e não é uma atualização forçada, não fazer nada
+        // (preservar opções que já vieram do servidor)
+        if (Object.keys(activeFilters).length === 0 && !forceUpdate) {
+            console.log(`Sem filtros ativos para ${fieldName}, mantendo opções do servidor`);
+            return;
+        }
         
         const currentValue = select.value;
         
@@ -1075,8 +1085,16 @@ function setupDynamicFilters() {
                 
                 // Limpar opções (exceto a primeira)
                 const firstOption = select.firstElementChild;
+                const firstOptionText = firstOption ? firstOption.textContent : '';
                 select.innerHTML = '';
-                if (firstOption) select.appendChild(firstOption);
+                
+                // Adicionar primeira opção (Todas/Todos)
+                if (firstOptionText) {
+                    const firstOpt = document.createElement('option');
+                    firstOpt.value = '';
+                    firstOpt.textContent = firstOptionText;
+                    select.appendChild(firstOpt);
+                }
                 
                 if (data.success && data.values && data.values.length > 0) {
                     console.log(`Filtro ${fieldName} atualizado: ${data.values.length} valores encontrados`);
@@ -1098,7 +1116,7 @@ function setupDynamicFilters() {
                         }
                     }
                 } else {
-                    // Se não há valores, limpar seleção
+                    // Se não há valores, manter apenas a primeira opção
                     console.warn(`Nenhum valor encontrado para ${fieldName} com os filtros ativos`);
                     select.value = '';
                 }
@@ -1125,13 +1143,21 @@ function setupDynamicFilters() {
         const activeFilters = getAllActiveFilters();
         console.log('Verificando filtros pré-selecionados...', activeFilters);
         
-        // Se há pelo menos um filtro ativo (especialmente organização), atualizar outros filtros
+        // IMPORTANTE: Só atualizar se houver filtros ativos E se os selects já tiverem opções carregadas
+        // Isso evita limpar opções que já vieram do servidor quando não há filtros pré-selecionados
         if (Object.keys(activeFilters).length > 0) {
-            console.log('Filtros pré-selecionados detectados, atualizando outros filtros...', activeFilters);
-            // Atualizar todos os outros filtros baseado nos filtros ativos
-            updateAllOtherFilters();
+            // Verificar se pelo menos um select tem opções (mais que apenas "Todas/Todos")
+            const hasOptions = Array.from(otherFilterSelects).some(select => select.options.length > 1);
+            
+            if (hasOptions) {
+                console.log('Filtros pré-selecionados detectados, atualizando outros filtros...', activeFilters);
+                // Atualizar todos os outros filtros baseado nos filtros ativos
+                updateAllOtherFilters();
+            } else {
+                console.log('Filtros pré-selecionados detectados, mas selects ainda não têm opções. Aguardando...');
+            }
         } else {
-            console.log('Nenhum filtro pré-selecionado encontrado');
+            console.log('Nenhum filtro pré-selecionado encontrado - mantendo opções do servidor');
         }
     }
     
@@ -1153,24 +1179,17 @@ function setupDynamicFilters() {
         }
     }
     
-    // Atualizar filtros no carregamento inicial
-    // Sincronizar primeiro, depois atualizar filtros
+    // Atualizar filtros no carregamento inicial APENAS se houver filtros pré-selecionados
+    // Aguardar um pouco para garantir que o DOM e opções do servidor estão carregadas
     setTimeout(() => {
         syncOrganizacaoInputs();
-        checkAndUpdatePreSelectedFilters();
-    }, 300);
-    
-    // Também verificar após um delay maior para garantir que tudo está carregado
-    setTimeout(() => {
-        syncOrganizacaoInputs();
-        checkAndUpdatePreSelectedFilters();
-    }, 1000);
-    
-    // Verificar uma última vez após tudo carregar (incluindo opções de organização)
-    setTimeout(() => {
-        syncOrganizacaoInputs();
-        checkAndUpdatePreSelectedFilters();
-    }, 2000);
+        const activeFilters = getAllActiveFilters();
+        // Só atualizar se realmente houver filtros ativos
+        if (Object.keys(activeFilters).length > 0) {
+            console.log('Atualizando filtros baseado em filtros pré-selecionados...');
+            checkAndUpdatePreSelectedFilters();
+        }
+    }, 800);
     
     // Quando organização muda, atualizar outros filtros
     if (organizacaoInput) {
