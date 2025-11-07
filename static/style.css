@@ -333,18 +333,22 @@ body::after {
     border-color: rgba(212, 175, 55, 0.08);
     font-size: 0.875rem;
     color: #e8e8e8;
+    background: rgba(20, 25, 35, 0.5);
 }
 
-/* Removido estilo zebra - todas as linhas com mesmo fundo */
+.table tbody tr {
+    background: rgba(20, 25, 35, 0.5);
+}
 
 .table-hover tbody tr:hover {
-    background: rgba(212, 175, 55, 0.12);
+    background: rgba(212, 175, 55, 0.15);
     transition: all 0.2s ease;
 }
 
 .table {
     color: #e8e8e8;
     border-color: rgba(212, 175, 55, 0.1);
+    background: transparent;
 }
 
 /* Estilos para campos editáveis modo escuro */
