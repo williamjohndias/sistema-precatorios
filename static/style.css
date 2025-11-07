@@ -118,55 +118,54 @@ body::after {
     padding-right: 1.5rem;
 }
 
-/* Estilos para formulários no modo escuro */
+/* Estilos para formulários */
 .form-control, .form-select {
-    background: rgba(20, 25, 40, 0.8);
-    border: 1px solid rgba(212, 175, 55, 0.3);
-    color: #e0e0e0;
+    background: #ffffff;
+    border: 1px solid #ced4da;
+    color: #495057;
     transition: all 0.2s ease;
 }
 
 .form-control:focus, .form-select:focus {
-    background: rgba(25, 30, 45, 0.9);
+    background: #ffffff;
     border-color: #D4AF37;
-    color: #ffffff;
+    color: #495057;
     box-shadow: 0 0 0 0.2rem rgba(212, 175, 55, 0.25);
 }
 
 .form-control::placeholder {
-    color: #888;
+    color: #6c757d;
 }
 
 .form-label {
-    color: #d0d0d0;
+    color: #495057;
 }
 
 .form-label.text-muted {
-    color: #a0a0a0 !important;
+    color: #6c757d !important;
 }
 
 /* Badges de informação */
 .info-badge {
-    background: rgba(20, 25, 40, 0.9);
-    backdrop-filter: blur(10px);
+    background: #ffffff;
     padding: 0.75rem 1.25rem;
     border-radius: 8px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
     border-left: 3px solid #D4AF37;
-    border: 1px solid rgba(212, 175, 55, 0.2);
+    border: 1px solid #e9ecef;
     transition: all 0.2s ease;
-    color: #ffffff;
+    color: #1a1a1a;
 }
 
 .info-badge:hover {
-    box-shadow: 0 4px 15px rgba(212, 175, 55, 0.3);
+    box-shadow: 0 4px 15px rgba(212, 175, 55, 0.2);
     transform: translateY(-1px);
     border-left-color: #F5E08A;
     border-color: rgba(212, 175, 55, 0.4);
 }
 
 .info-badge .text-muted {
-    color: #a0a0a0 !important;
+    color: #6c757d !important;
 }
 
 /* Navbar com gradiente escuro estilo Precs */
@@ -267,8 +266,7 @@ body::after {
     border-radius: 12px;
     position: relative;
     z-index: 1;
-    background: rgba(20, 25, 40, 0.9);
-    backdrop-filter: blur(10px);
+    background: #ffffff;
     transition: all 0.3s ease;
     border-top: 3px solid transparent;
 }
@@ -281,14 +279,14 @@ body::after {
 }
 
 .card-header {
-    background: rgba(15, 20, 35, 0.8);
-    border-bottom: 2px solid rgba(212, 175, 55, 0.3);
+    background: #ffffff;
+    border-bottom: 2px solid #e9ecef;
     padding: 1.25rem 1.5rem;
     border-radius: 12px 12px 0 0;
 }
 
 .card-header h6 {
-    color: #ffffff;
+    color: #1a1a1a;
     font-size: 1rem;
 }
 
@@ -301,8 +299,8 @@ body::after {
 }
 
 .table th {
-    background: rgba(15, 20, 35, 0.95);
-    color: #ffffff;
+    background: #f8f9fa;
+    color: #1a1a1a;
     font-weight: 700;
     font-size: 0.8125rem;
     border-bottom: 3px solid #D4AF37;
@@ -317,30 +315,29 @@ body::after {
     position: sticky;
     top: 0;
     z-index: 10;
-    background-color: rgba(15, 20, 35, 0.95) !important;
-    backdrop-filter: blur(10px);
-    box-shadow: 0 2px 8px rgba(0,0,0,.3);
+    background-color: #f8f9fa !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,.15);
 }
 
 .table td {
     padding: 0.75rem;
     vertical-align: middle;
-    border-color: rgba(212, 175, 55, 0.1);
+    border-color: #dee2e6;
     font-size: 0.875rem;
-    color: #e0e0e0;
+    color: #495057;
 }
 
 .table-striped > tbody > tr:nth-of-type(odd) > td {
-    background: rgba(20, 25, 40, 0.5);
+    background: #f8f9fa;
 }
 
 .table-hover tbody tr:hover {
-    background: rgba(212, 175, 55, 0.15);
+    background: rgba(212, 175, 55, 0.08);
     transition: all 0.2s ease;
 }
 
 .table {
-    color: #e0e0e0;
+    color: #495057;
 }
 
 /* Estilos para campos editáveis */
