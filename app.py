@@ -431,6 +431,21 @@ class DatabaseManager:
         if active_filters:
             use_cache = False
         
+        # Garantir que há conexão válida antes de usar
+        if not self.connection or self.connection.closed:
+            if not self.connect():
+                logger.error(f"Falha ao conectar para buscar valores de {field}")
+                return []
+        
+        # Verificar se cursor ainda está válido
+        if not self.cursor or self.cursor.closed:
+            try:
+                self.cursor = self.connection.cursor()
+            except Exception as e:
+                logger.error(f"Erro ao recriar cursor para {field}: {e}")
+                if not self.connect():
+                    return []
+        
         # Verificar cache primeiro (aumentado para 1 hora para melhor performance)
         if use_cache:
             now = datetime.now()
@@ -465,11 +480,21 @@ class DatabaseManager:
                     limit_count = None  # Manter None para carregar todas
             
             try:
+                # Verificar se cursor ainda está válido antes de usar
+                if not self.cursor or self.cursor.closed:
+                    self.cursor = self.connection.cursor()
                 self.cursor.execute(f"SET statement_timeout TO {timeout}")
                 # Desabilitar sequential scan para forçar uso de índices
                 self.cursor.execute("SET enable_seqscan = off")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Erro ao configurar timeout para {field}: {e}")
+                # Tentar recriar cursor se necessário
+                if not self.cursor or self.cursor.closed:
+                    try:
+                        self.cursor = self.connection.cursor()
+                    except:
+                        if not self.connect():
+                            return []
             
             # Construir WHERE clause com filtros ativos (dinâmico)
             where_conditions = ["esta_na_ordem = TRUE", f"{field} IS NOT NULL"]
@@ -546,6 +571,15 @@ class DatabaseManager:
             
             logger.info(f"Executando query DINÂMICA para {field} (limite: {limit_count}, busca: {search_term}, filtros ativos: {len(active_filters) if active_filters else 0}, campo pequeno: {is_small_field})...")
             start_time = time.time()
+            
+            # Verificar cursor antes de executar
+            if not self.cursor or self.cursor.closed:
+                if not self.connection or self.connection.closed:
+                    if not self.connect():
+                        return []
+                else:
+                    self.cursor = self.connection.cursor()
+            
             self.cursor.execute(query, params)
             all_results = self.cursor.fetchall()
             query_time = time.time() - start_time
@@ -1811,8 +1845,10 @@ def admin_apply_indexes():
 @app.route('/api/get_filter_options', methods=['GET'])
 def get_filter_options():
     """API para carregar opções de filtro DINÂMICAS baseadas em filtros ativos"""
+    # Criar uma nova conexão para cada requisição (evita problemas com requisições paralelas)
+    local_db = DatabaseManager()
     try:
-        if not db_manager.connect():
+        if not local_db.connect():
             return jsonify({'success': False, 'message': 'Erro ao conectar com banco'}), 500
         
         field = request.args.get('field', '')
@@ -1836,7 +1872,7 @@ def get_filter_options():
                 active_filters[filter_field] = filter_value
         
         # Usar estratégia dinâmica com filtros ativos
-        values = db_manager.get_filter_values(field, use_cache=False, limit_count=limit_count, search_term=search_term, active_filters=active_filters if active_filters else None)
+        values = local_db.get_filter_values(field, use_cache=False, limit_count=limit_count, search_term=search_term, active_filters=active_filters if active_filters else None)
         
         logger.info(f"API DINÂMICA: Retornando {len(values)} valores para {field} (filtros ativos: {len(active_filters)})")
         
@@ -1853,7 +1889,7 @@ def get_filter_options():
         logger.error(f"Traceback: {traceback.format_exc()}")
         return jsonify({'success': False, 'message': str(e)}), 500
     finally:
-        db_manager.disconnect()
+        local_db.disconnect()
 
 # Configuração específica para Vercel
 if __name__ == "__main__":
