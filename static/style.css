@@ -1485,15 +1485,24 @@ input[list]:hover {
 /* Conteúdo do rodapé */
 .footer-content {
     position: relative;
-    padding: 2rem 0;
+    padding: 2.5rem 0;
     z-index: 1;
+}
+
+.footer-content .container {
+    max-width: 1400px;
+}
+
+.footer-content .header-stats {
+    justify-content: center;
+    width: 100%;
 }
 
 /* Logo do rodapé com animação */
 .footer-logo {
     display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     gap: 1rem;
     animation: fadeInLeft 1s ease-out;
 }
@@ -1611,6 +1620,9 @@ input[list]:hover {
 /* Informações do rodapé */
 .footer-info {
     animation: fadeInRight 1s ease-out 0.4s both;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
 }
 
 @keyframes fadeInRight {
@@ -1734,8 +1746,9 @@ input[list]:hover {
 /* Responsividade do rodapé */
 @media (max-width: 768px) {
     .footer-logo {
-        flex-direction: column;
-        gap: 0.5rem;
+        flex-direction: row;
+        justify-content: center;
+        gap: 0.75rem;
     }
 
     .footer-icon {
@@ -1752,7 +1765,15 @@ input[list]:hover {
     }
 
     .footer-content {
-        padding: 100px 0 1.5rem;
+        padding: 2rem 0;
+    }
+
+    .footer-content .row > div {
+        text-align: center !important;
+    }
+
+    .footer-info {
+        justify-content: center !important;
     }
 }
 
