@@ -964,167 +964,152 @@ function loadDropdownOptions(fields) {
     loadNext();
 }
 
-// Configurar filtros dinâmicos que se atualizam baseados em filtros ativos
+// Configurar filtros dinâmicos: organização mostra TODAS, outros filtros são dinâmicos baseados na organização
 function setupDynamicFilters() {
-    // Obter todos os campos de filtro
-    const filterInputs = document.querySelectorAll('input[name^="filter_"], select[name^="filter_"]');
     const organizacaoInput = document.getElementById('filter_organizacao_hidden');
+    const otherFilterSelects = document.querySelectorAll('select[name^="filter_"]:not([name="filter_organizacao"])');
     
-    // Função para obter filtros ativos atuais
-    function getActiveFilters() {
-        const active = {};
-        filterInputs.forEach(input => {
-            const fieldName = input.name.replace('filter_', '');
-            const value = input.value ? input.value.trim() : '';
-            if (value) {
-                active[fieldName] = value;
-            }
-        });
-        // Adicionar organização se houver
+    // Função para obter filtro de organização ativo
+    function getOrganizacaoFilter() {
         if (organizacaoInput && organizacaoInput.value) {
-            active.organizacao = organizacaoInput.value.trim();
+            return organizacaoInput.value.trim();
         }
-        return active;
+        return null;
     }
     
-    // Função para atualizar um filtro específico baseado em filtros ativos
-    function updateFilter(fieldName, skipField = null) {
-        if (fieldName === skipField) return;
+    // Função para atualizar outros filtros baseado na organização selecionada
+    function updateOtherFilters() {
+        const organizacao = getOrganizacaoFilter();
         
-        const activeFilters = getActiveFilters();
-        const limit = fieldName === 'organizacao' ? 200 : null;
-        const limitParam = limit !== null ? `&limit=${limit}` : '';
-        
-        // Construir URL com filtros ativos
-        let url = `/api/get_filter_options?field=${fieldName}${limitParam}`;
-        Object.keys(activeFilters).forEach(key => {
-            if (key !== fieldName) {
-                url += `&active_filter_${key}=${encodeURIComponent(activeFilters[key])}`;
+        otherFilterSelects.forEach(select => {
+            const fieldName = select.name.replace('filter_', '');
+            const currentValue = select.value;
+            
+            // Construir URL com filtro de organização se houver
+            let url = `/api/get_filter_options?field=${fieldName}`;
+            if (organizacao) {
+                url += `&active_filter_organizacao=${encodeURIComponent(organizacao)}`;
             }
-        });
-        
-        // Atualizar dropdown/select
-        if (fieldName === 'organizacao') {
-            const optionsContainer = document.getElementById('organizacao_options');
-            if (optionsContainer) {
-                // Mostrar loading
-                const loading = optionsContainer.querySelector('.loading-indicator');
-                if (!loading) {
-                    const loadingDiv = document.createElement('div');
-                    loadingDiv.className = 'searchable-select-option loading-indicator';
-                    loadingDiv.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Atualizando...';
-                    loadingDiv.style.textAlign = 'center';
-                    loadingDiv.style.color = '#6c757d';
-                    optionsContainer.appendChild(loadingDiv);
-                }
-                
-                fetch(url)
-                    .then(response => response.json())
-                    .then(data => {
-                        const loading = optionsContainer.querySelector('.loading-indicator');
-                        if (loading) loading.remove();
-                        
-                        const firstOption = optionsContainer.querySelector('.searchable-select-option[data-value=""]');
-                        optionsContainer.innerHTML = '';
-                        if (firstOption) optionsContainer.appendChild(firstOption);
-                        
-                        if (data.success && data.values && data.values.length > 0) {
-                            data.values.forEach(value => {
-                                const option = document.createElement('div');
-                                option.className = 'searchable-select-option';
-                                option.dataset.value = value;
-                                option.textContent = value;
-                                optionsContainer.appendChild(option);
-                            });
-                        }
-                        
-                        if (reconfigureSearchableSelect) {
-                            reconfigureSearchableSelect();
-                        }
-                    })
-                    .catch(error => {
-                        console.error(`Erro ao atualizar filtro ${fieldName}:`, error);
-                    });
+            
+            // Mostrar loading
+            const loadingOption = select.querySelector('.loading-option');
+            if (!loadingOption) {
+                const loading = document.createElement('option');
+                loading.textContent = 'Atualizando...';
+                loading.disabled = true;
+                loading.className = 'loading-option';
+                select.appendChild(loading);
             }
-        } else {
-            const select = document.querySelector(`select[name="filter_${fieldName}"]`);
-            if (select) {
-                const currentValue = select.value;
-                const loadingOption = select.querySelector('.loading-option');
-                if (!loadingOption) {
-                    const loading = document.createElement('option');
-                    loading.textContent = 'Atualizando...';
-                    loading.disabled = true;
-                    loading.className = 'loading-option';
-                    select.appendChild(loading);
-                }
-                
-                fetch(url)
-                    .then(response => response.json())
-                    .then(data => {
-                        const loading = select.querySelector('.loading-option');
-                        if (loading) loading.remove();
+            
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    const loading = select.querySelector('.loading-option');
+                    if (loading) loading.remove();
+                    
+                    // Limpar opções (exceto a primeira)
+                    const firstOption = select.firstElementChild;
+                    select.innerHTML = '';
+                    if (firstOption) select.appendChild(firstOption);
+                    
+                    if (data.success && data.values && data.values.length > 0) {
+                        data.values.forEach(value => {
+                            const option = document.createElement('option');
+                            option.value = value;
+                            option.textContent = value;
+                            select.appendChild(option);
+                        });
                         
-                        // Limpar opções (exceto a primeira)
-                        const firstOption = select.firstElementChild;
-                        select.innerHTML = '';
-                        if (firstOption) select.appendChild(firstOption);
-                        
-                        if (data.success && data.values && data.values.length > 0) {
-                            data.values.forEach(value => {
-                                const option = document.createElement('option');
-                                option.value = value;
-                                option.textContent = value;
-                                select.appendChild(option);
-                            });
-                            
-                            // Restaurar valor selecionado se ainda existir
-                            if (currentValue) {
+                        // Restaurar valor selecionado se ainda existir
+                        if (currentValue) {
+                            const optionExists = Array.from(select.options).some(opt => opt.value === currentValue);
+                            if (optionExists) {
                                 select.value = currentValue;
+                            } else {
+                                select.value = ''; // Limpar se valor não existe mais
                             }
                         }
-                    })
-                    .catch(error => {
-                        console.error(`Erro ao atualizar filtro ${fieldName}:`, error);
-                    });
-            }
-        }
-    }
-    
-    // Função para atualizar todos os outros filtros quando um filtro muda
-    function updateOtherFilters(changedField) {
-        const filterFields = ['organizacao', 'prioridade', 'tribunal', 'natureza', 'situacao', 'regime', 'ano_orc'];
-        filterFields.forEach(field => {
-            if (field !== changedField) {
-                updateFilter(field, changedField);
-            }
+                    } else {
+                        // Se não há valores, limpar seleção
+                        select.value = '';
+                    }
+                })
+                .catch(error => {
+                    console.error(`Erro ao atualizar filtro ${fieldName}:`, error);
+                    const loading = select.querySelector('.loading-option');
+                    if (loading) loading.remove();
+                });
         });
     }
     
-    // Adicionar listeners para mudanças nos filtros
-    filterInputs.forEach(input => {
-        const fieldName = input.name.replace('filter_', '');
-        
-        // Debounce para evitar muitas requisições
-        let timeout;
-        input.addEventListener('change', function() {
-            clearTimeout(timeout);
-            timeout = setTimeout(() => {
-                updateOtherFilters(fieldName);
-            }, 500); // Aguardar 500ms após mudança
-        });
-    });
-    
-    // Para organização (campo especial)
+    // Quando organização muda, atualizar outros filtros
     if (organizacaoInput) {
         let timeout;
         organizacaoInput.addEventListener('change', function() {
             clearTimeout(timeout);
             timeout = setTimeout(() => {
-                updateOtherFilters('organizacao');
-            }, 500);
+                updateOtherFilters();
+            }, 300); // Debounce de 300ms
         });
     }
+    
+    // Atualizar outros filtros quando outros filtros mudam (cascata)
+    otherFilterSelects.forEach(select => {
+        let timeout;
+        select.addEventListener('change', function() {
+            clearTimeout(timeout);
+            timeout = setTimeout(() => {
+                // Atualizar apenas filtros que não são o que mudou
+                const changedField = select.name.replace('filter_', '');
+                otherFilterSelects.forEach(otherSelect => {
+                    const otherField = otherSelect.name.replace('filter_', '');
+                    if (otherField !== changedField) {
+                        const organizacao = getOrganizacaoFilter();
+                        const currentValue = otherSelect.value;
+                        
+                        let url = `/api/get_filter_options?field=${otherField}`;
+                        if (organizacao) {
+                            url += `&active_filter_organizacao=${encodeURIComponent(organizacao)}`;
+                        }
+                        // Adicionar outros filtros ativos
+                        otherFilterSelects.forEach(activeSelect => {
+                            const activeField = activeSelect.name.replace('filter_', '');
+                            if (activeField !== otherField && activeField !== 'organizacao' && activeSelect.value) {
+                                url += `&active_filter_${activeField}=${encodeURIComponent(activeSelect.value)}`;
+                            }
+                        });
+                        
+                        fetch(url)
+                            .then(response => response.json())
+                            .then(data => {
+                                if (data.success && data.values) {
+                                    const firstOption = otherSelect.firstElementChild;
+                                    otherSelect.innerHTML = '';
+                                    if (firstOption) otherSelect.appendChild(firstOption);
+                                    
+                                    data.values.forEach(value => {
+                                        const option = document.createElement('option');
+                                        option.value = value;
+                                        option.textContent = value;
+                                        otherSelect.appendChild(option);
+                                    });
+                                    
+                                    if (currentValue) {
+                                        const optionExists = Array.from(otherSelect.options).some(opt => opt.value === currentValue);
+                                        if (optionExists) {
+                                            otherSelect.value = currentValue;
+                                        } else {
+                                            otherSelect.value = '';
+                                        }
+                                    }
+                                }
+                            })
+                            .catch(error => console.error(`Erro ao atualizar ${otherField}:`, error));
+                    }
+                });
+            }, 300);
+        });
+    });
 }
 
 // Carregar opções com busca incremental no servidor (muito mais rápido)

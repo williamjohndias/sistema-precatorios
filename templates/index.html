@@ -9,23 +9,23 @@
     <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
 </head>
 <body>
-    <nav class="navbar navbar-dark" style="background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);">
+    <nav class="navbar navbar-light bg-white border-bottom">
         <div class="container-fluid">
-            <span class="navbar-brand mb-0 h1">
-                <i class="fas fa-database me-2"></i>
-                ORDEM CRONOLÓGICA DE PRECATÓRIOS
+            <span class="navbar-brand mb-0 fw-semibold">
+                <i class="fas fa-list-ol me-2 text-primary"></i>
+                Precatórios
             </span>
-            <div class="d-flex">
-                <a class="btn btn-outline-light me-2" href="{{ url_for('logs') }}" style="border-color:#D2AF52;color:#D2AF52;background-color:rgba(210,175,82,0.1);">
+            <div class="d-flex gap-2">
+                <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('logs') }}">
                     <i class="fas fa-history me-1"></i>Logs
                 </a>
-                <button class="btn me-2" onclick="openBulkEditModal()" style="background: linear-gradient(135deg, #D2AF52 0%, #F5C600 100%);border:none;color:#000;">
+                <button class="btn btn-sm btn-outline-primary" onclick="openBulkEditModal()">
                     <i class="fas fa-edit me-1"></i>Edição em Massa
                 </button>
-                <button class="btn me-2" onclick="saveChanges()" style="background: linear-gradient(135deg, #D2AF52 0%, #F5C600 100%);border:none;color:#000;">
-                    <i class="fas fa-save me-1"></i>Atualizar
+                <button class="btn btn-sm btn-primary" onclick="saveChanges()">
+                    <i class="fas fa-save me-1"></i>Salvar
                 </button>
-                <button class="btn me-2" onclick="undoChanges()" style="background-color:#F5E08A;border-color:#F5E08A;color:#000;">
+                <button class="btn btn-sm btn-outline-secondary" onclick="undoChanges()">
                     <i class="fas fa-undo me-1"></i>Desfazer
                 </button>
             </div>
