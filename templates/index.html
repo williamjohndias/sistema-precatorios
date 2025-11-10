@@ -33,6 +33,9 @@
                 </div>
             </a>
             <div class="d-flex gap-3 align-items-center">
+                <a class="btn btn-nav-action" href="{{ url_for('pec66_page') }}">
+                    <i class="fas fa-calculator me-2"></i>PEC 66
+                </a>
                 <a class="btn btn-nav-action" href="{{ url_for('logs') }}">
                     <i class="fas fa-history me-2"></i>Logs
                 </a>
@@ -345,7 +348,19 @@
                                                 {% endif %}
                                             {% else %}
                                                 <span class="form-control-plaintext">
-                                                    {% if field.type == 'date' and precatorio[field.name] %}
+                                                    {% if field.name == 'pec66_resultado_arredondado' %}
+                                                        {% if precatorio[field.name] is not none %}
+                                                            <span class="badge bg-warning text-dark">{{ precatorio[field.name] }}</span>
+                                                        {% else %}
+                                                            <span class="text-muted">-</span>
+                                                        {% endif %}
+                                                    {% elif field.name == 'acumulativo_pec66' %}
+                                                        {% if precatorio[field.name] is not none %}
+                                                            {{ precatorio[field.name] | currency_br }}
+                                                        {% else %}
+                                                            <span class="text-muted">-</span>
+                                                        {% endif %}
+                                                    {% elif field.type == 'date' and precatorio[field.name] %}
                                                         {{ precatorio[field.name].strftime('%d/%m/%Y') }}
                                                     {% elif field.type == 'boolean' %}
                                                         {% if precatorio[field.name] %}Sim{% else %}Não{% endif %}

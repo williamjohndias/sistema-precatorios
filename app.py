@@ -14,6 +14,10 @@ import json
 import os
 import re
 import time
+import csv
+from collections import defaultdict
+import unicodedata
+import math
 
 # Configurar logging otimizado para Vercel
 logging.basicConfig(
@@ -186,14 +190,17 @@ class DatabaseManager:
                 sort_order = 'ASC'
             
             # Construir query base
-            base_query = f"SELECT {', '.join(fields)} FROM {TABLE_NAME}"
+            # Por enquanto, não calcular acumulativo na query (será calculado depois se necessário)
+            # Isso evita problemas de performance e sintaxe
+            fields_str = ', '.join(fields)
+            base_query = f"SELECT {fields_str} FROM {TABLE_NAME}"
             # Contagem pode ser custosa; evitamos COUNT para não estourar timeout
             count_query = None
             
             # Adicionar filtros
             where_conditions = []
             params = []
-
+            
             # Processar filtro esta_na_ordem primeiro (filtro padrão se não especificado)
             esta_na_ordem_filter = filters.get('esta_na_ordem', 'true').strip().lower() if filters else 'true'
 
@@ -289,6 +296,7 @@ class DatabaseManager:
             
             if where_conditions:
                 where_clause = " WHERE " + " AND ".join(where_conditions)
+                # Aplicar WHERE na query externa (após o CTE)
                 base_query += where_clause
                 if count_query is not None:
                     count_query += where_clause
@@ -310,10 +318,15 @@ class DatabaseManager:
             # Usar EXPLAIN para debug se necessário
             logger.info(f"Executando query: {base_query[:200]}... com {len(params)} parâmetros")
             start_time = time.time()
-            self.cursor.execute(base_query, params)
-            data = self.cursor.fetchall()
-            query_time = time.time() - start_time
-            logger.info(f"Query executada em {query_time:.2f}s, retornou {len(data)} registros")
+            try:
+                self.cursor.execute(base_query, params)
+                data = self.cursor.fetchall()
+                query_time = time.time() - start_time
+                logger.info(f"Query executada em {query_time:.2f}s, retornou {len(data)} registros")
+            except psycopg2.Error as e:
+                logger.error(f"Erro ao executar query: {e}")
+                logger.error(f"Query completa: {base_query}")
+                raise
 
             # Determinar se precisamos fazer COUNT() real
             # Se houver filtros além do filtro padrão esta_na_ordem, fazer COUNT()
@@ -1104,6 +1117,484 @@ class DatabaseManager:
                 self.connection.rollback()
             return False
 
+# Função para ler o CSV e criar dicionário de teto de repasse por município
+def normalize_text(text: str) -> str:
+    """Remove acentos, espaços e caracteres especiais para comparação."""
+    if not text:
+        return ''
+    text = unicodedata.normalize('NFKD', text)
+    text = ''.join(char for char in text if not unicodedata.combining(char))
+    text = text.lower()
+    text = re.sub(r'[^a-z0-9]+', '', text)
+    return text
+
+
+def load_teto_repasse_from_csv(csv_path='cálculo.csv'):
+    """
+    Lê o CSV e retorna um dicionário: {municipio: teto_repasse/12}
+    """
+    teto_dict = {}
+    try:
+        # Tentar diferentes caminhos possíveis
+        possible_paths = [
+            csv_path,
+            os.path.join(os.path.dirname(__file__), csv_path),
+            os.path.join(os.getcwd(), csv_path),
+        ]
+        
+        file_found = False
+        actual_path = None
+        
+        for path in possible_paths:
+            if os.path.exists(path):
+                actual_path = path
+                file_found = True
+                break
+        
+        if not file_found:
+            logger.error(f"Arquivo CSV não encontrado. Tentou: {possible_paths}")
+            return teto_dict
+        
+        logger.info(f"Lendo CSV do caminho: {actual_path}")
+        
+        with open(actual_path, 'r', encoding='utf-8', newline='') as f:
+            # Ler a primeira linha (cabeçalho)
+            reader = csv.reader(f)
+            try:
+                headers = next(reader)
+            except StopIteration:
+                logger.error("CSV está vazio")
+                return teto_dict
+            
+            # Encontrar os índices das colunas necessárias
+            teto_col_idx = None
+            ente_col_idx = None
+            estado_col_idx = None
+            
+            for i, header in enumerate(headers):
+                header_upper = header.upper()
+                normalized_header = header_upper.replace('\n', ' ').strip()
+                
+                if estado_col_idx is None and 'ESTADO' in normalized_header:
+                    estado_col_idx = i
+                if ente_col_idx is None and ('ENTE DEVEDOR' in normalized_header or ('ENTE' in normalized_header and 'DEVEDOR' in normalized_header)):
+                    ente_col_idx = i
+                if teto_col_idx is None and 'TETO REPASSE PEC 66' in normalized_header:
+                    teto_col_idx = i
+                if estado_col_idx is not None and ente_col_idx is not None:
+                    # continuar buscando até encontrar teto
+                    pass
+            
+            if teto_col_idx is None:
+                # Algumas planilhas podem trazer o texto com espaços extras
+                for i, header in enumerate(headers):
+                    if 'TETO REPASSE' in header.upper():
+                        teto_col_idx = i
+                        break
+
+            if teto_col_idx is None or ente_col_idx is None:
+                logger.error(f"Colunas não encontradas no CSV. Headers: {headers}")
+                logger.error(f"teto_col_idx: {teto_col_idx}, ente_col_idx: {ente_col_idx}, estado_col_idx: {estado_col_idx}")
+                return teto_dict
+            
+            # Log para debug
+            logger.info(f"Índices encontrados - Ente Devedor: {ente_col_idx}, Estado: {estado_col_idx}, Teto: {teto_col_idx}")
+            logger.info(f"Primeira linha (headers): {headers}")
+            
+            # Processar cada linha
+            row_count = 0
+            processed_count = 0
+            required_indices = [idx for idx in [teto_col_idx, ente_col_idx, estado_col_idx] if idx is not None]
+            max_required_idx = max(required_indices) if required_indices else 0
+            
+            for row in reader:
+                row_count += 1
+                if len(row) <= max_required_idx:
+                    if row_count <= 5:
+                        logger.warning(f"Linha {row_count} ignorada: muito curta (len={len(row)}, precisa >= {max_required_idx + 1})")
+                    continue
+                
+                municipio = row[ente_col_idx].strip()
+                teto_str = row[teto_col_idx].strip()
+                
+                if not municipio or not teto_str:
+                    if row_count <= 5:
+                        logger.warning(f"Linha {row_count} ignorada: municipio='{municipio}', teto_str='{teto_str}'")
+                    continue
+                
+                processed_count += 1
+
+                estado = ''
+                if estado_col_idx is not None and len(row) > estado_col_idx:
+                    estado = row[estado_col_idx].strip()
+                
+                # Normalizar valor monetário (remover R$, espaços, converter vírgula para ponto)
+                try:
+                    teto_clean = teto_str.replace('R$', '').replace(' ', '').replace('.', '').replace(',', '.')
+                    teto_value = float(teto_clean)
+                    # Dividir por 12
+                    teto_mensal = teto_value / 12
+                    
+                    # Armazenar por diferentes chaves para facilitar matching
+                    # Prioridade: chaves com estado primeiro (mais específicas)
+                    keys_to_store = []
+                    
+                    # 1. Chave principal: "Município - Estado" (se estado disponível)
+                    if estado:
+                        keys_to_store.append(f"{municipio} - {estado}")
+                        keys_to_store.append(f"{municipio}/{estado}")
+                    
+                    # 2. Apenas município (fallback)
+                    keys_to_store.append(municipio)
+                    
+                    # 3. Normalizações (sem acentos/pontuação) para todas as chaves
+                    normalized_keys = []
+                    for key in keys_to_store:
+                        normalized = normalize_text(key)
+                        if normalized and normalized not in normalized_keys:
+                            normalized_keys.append(normalized)
+                    
+                    # Armazenar todas as chaves (com e sem normalização)
+                    all_keys = keys_to_store + normalized_keys
+                    for key in all_keys:
+                        if key:  # Só armazenar se a chave não estiver vazia
+                            teto_dict[key] = teto_mensal
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"Erro ao processar teto para {municipio}: {teto_str} - {e}")
+                    continue
+        
+        logger.info(f"CSV carregado: {len(teto_dict)} municípios processados (de {row_count} linhas, {processed_count} processadas)")
+        if len(teto_dict) > 0:
+            sample_items = list(teto_dict.items())[:5]
+            logger.info(f"Exemplos de chaves no teto_dict (primeiras 5): {[f'{k}: {v:.2f}' for k, v in sample_items]}")
+        else:
+            logger.error("ATENÇÃO: teto_dict está vazio após processar CSV!")
+            logger.error(f"Linhas lidas: {row_count}, Linhas processadas: {processed_count}")
+        return teto_dict
+    except FileNotFoundError:
+        logger.error(f"Arquivo CSV não encontrado: {csv_path}")
+        return {}
+    except Exception as e:
+        logger.error(f"Erro ao ler CSV: {e}")
+        return {}
+
+# Função para calcular acumulativo por município
+def calculate_accumulative_by_municipio(db_manager, municipio=None):
+    """
+    Calcula o acumulativo (soma de valores ordenados por ordem) por município.
+    Retorna um dicionário: {municipio: {'acumulativo': valor, 'count': quantidade}}
+    """
+    try:
+        if not db_manager.connect():
+            logger.error("Não foi possível conectar ao banco de dados")
+            return {}
+        
+        # Query para calcular acumulativo por município
+        # Ordena por ordem e soma os valores acumulativamente
+        query = """
+            WITH ordered_precatorios AS (
+                SELECT 
+                    organizacao,
+                    ordem,
+                    valor,
+                    SUM(valor) OVER (
+                        PARTITION BY organizacao 
+                        ORDER BY ordem ASC 
+                        ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+                    ) as acumulativo
+                FROM precatorios
+                WHERE esta_na_ordem = TRUE 
+                    AND valor IS NOT NULL
+                    AND organizacao IS NOT NULL
+        """
+        
+        params = []
+        if municipio:
+            query += " AND organizacao = %s"
+            params.append(municipio)
+        
+        query += """
+            )
+            SELECT 
+                organizacao,
+                MAX(acumulativo) as acumulativo_total,
+                COUNT(*) as quantidade
+            FROM ordered_precatorios
+            GROUP BY organizacao
+            ORDER BY organizacao
+        """
+        
+        db_manager.cursor.execute(query, params)
+        results = db_manager.cursor.fetchall()
+        
+        acumulativo_dict = {}
+        for row in results:
+            municipio_name = row['organizacao']
+            acumulativo = float(row['acumulativo_total']) if row['acumulativo_total'] else 0.0
+            quantidade = int(row['quantidade']) if row['quantidade'] else 0
+            acumulativo_dict[municipio_name] = {
+                'acumulativo': acumulativo,
+                'quantidade': quantidade
+            }
+        
+        logger.info(f"Cálculo de acumulativo concluído: {len(acumulativo_dict)} municípios")
+        return acumulativo_dict
+        
+    except Exception as e:
+        logger.error(f"Erro ao calcular acumulativo: {e}")
+        return {}
+
+# Cache para dicionário de tetos (carregado uma vez)
+_cached_teto_dict = None
+_teto_cache_timestamp = None
+
+def get_teto_dict():
+    """Retorna o dicionário de tetos com cache"""
+    global _cached_teto_dict, _teto_cache_timestamp
+    from datetime import datetime, timedelta
+    
+    now = datetime.now()
+    cache_valid = (
+        _cached_teto_dict is not None and
+        _teto_cache_timestamp is not None and
+        (now - _teto_cache_timestamp) < timedelta(hours=1)  # Cache de 1 hora
+    )
+    
+    if not cache_valid:
+        _cached_teto_dict = load_teto_repasse_from_csv()
+        _teto_cache_timestamp = now
+        logger.info(f"Teto dict recarregado: {len(_cached_teto_dict)} municípios")
+    
+    return _cached_teto_dict
+
+def calculate_pec66_for_records(records):
+    """
+    Calcula o valor PEC 66 para cada registro na lista.
+    Adiciona o campo 'pec66_resultado' e 'pec66_resultado_arredondado' a cada registro.
+    """
+    teto_dict = get_teto_dict()
+    
+    if not teto_dict:
+        logger.warning("Teto dict vazio, não é possível calcular PEC 66")
+        for record in records:
+            record['pec66_resultado'] = None
+            record['pec66_resultado_arredondado'] = None
+        return records
+    
+    logger.info(f"Teto dict carregado com {len(teto_dict)} chaves. Primeiras 5 chaves: {list(teto_dict.keys())[:5]}")
+    
+    if len(records) > 0:
+        logger.info(f"Processando {len(records)} registros. Primeiro registro: organizacao={records[0].get('organizacao')}, acumulativo_pec66={records[0].get('acumulativo_pec66')}")
+    
+    for idx, record in enumerate(records):
+        organizacao = record.get('organizacao')
+        acumulativo = record.get('acumulativo_pec66')
+        
+        if idx < 3:
+            logger.info(f"Registro {idx}: organizacao='{organizacao}', acumulativo_pec66={acumulativo} (tipo: {type(acumulativo)})")
+        
+        if not organizacao:
+            if idx < 3:
+                logger.warning(f"Registro {idx}: organizacao está vazio")
+            record['pec66_resultado'] = None
+            record['pec66_resultado_arredondado'] = None
+            continue
+            
+        # Converter acumulativo para float primeiro
+        try:
+            acumulativo_float = float(acumulativo) if acumulativo is not None else 0.0
+        except (TypeError, ValueError):
+            try:
+                from decimal import Decimal
+                acumulativo_float = float(Decimal(str(acumulativo))) if acumulativo is not None else 0.0
+            except Exception:
+                if idx < 3:
+                    logger.warning(f"Registro {idx}: não foi possível converter acumulativo '{acumulativo}' para float")
+                record['pec66_resultado'] = None
+                record['pec66_resultado_arredondado'] = None
+                continue
+        
+        if acumulativo is None or acumulativo_float == 0:
+            if idx < 3:
+                logger.info(f"Registro {idx}: acumulativo_pec66 está None ou 0 para organizacao '{organizacao}'")
+            record['pec66_resultado'] = None
+            record['pec66_resultado_arredondado'] = None
+            continue
+        
+        # Extrair município e estado da organização (formato: "Município - UF" ou "Município/UF")
+        municipio_org = organizacao.strip()
+        estado_org = None
+        
+        # Tentar extrair estado do formato "Município - UF" ou "Município/UF"
+        if ' - ' in municipio_org:
+            parts = municipio_org.split(' - ', 1)
+            municipio_org = parts[0].strip()
+            estado_org = parts[1].strip() if len(parts) > 1 else None
+        elif '/' in municipio_org:
+            parts = municipio_org.split('/', 1)
+            municipio_org = parts[0].strip()
+            estado_org = parts[1].strip() if len(parts) > 1 else None
+        
+        # Tentar diferentes chaves de busca (prioridade: mais específico primeiro)
+        teto_mensal = None
+        search_keys = []
+        
+        # 1. Match exato com estado (se disponível)
+        if estado_org:
+            search_keys.append(f"{municipio_org} - {estado_org}")
+            search_keys.append(f"{municipio_org}/{estado_org}")
+        
+        # 2. Match apenas com município
+        search_keys.append(municipio_org)
+        
+        # 3. Versões normalizadas
+        for key in search_keys:
+            normalized = normalize_text(key)
+            if normalized:
+                search_keys.append(normalized)
+        
+        # 4. Organização completa original
+        search_keys.append(organizacao)
+        search_keys.append(normalize_text(organizacao))
+        
+        # Tentar encontrar nas chaves
+        for key in search_keys:
+            if key in teto_dict:
+                teto_mensal = teto_dict[key]
+                if idx < 3:  # Log apenas para os primeiros 3 registros
+                    logger.info(f"Match encontrado para '{organizacao}': chave '{key}' -> teto_mensal={teto_mensal}")
+                break
+        
+        # Se ainda não encontrou, tentar busca por nome similar (fallback)
+        # Limitar busca para evitar travamento (máximo 100 iterações)
+        if teto_mensal is None:
+            municipio_lower = municipio_org.lower()
+            estado_lower = estado_org.lower() if estado_org else None
+            iteration_count = 0
+            max_iterations = 100  # Limite para evitar travamento
+            
+            for csv_key, csv_teto in teto_dict.items():
+                iteration_count += 1
+                if iteration_count > max_iterations:
+                    if idx < 3:
+                        logger.warning(f"Busca por similaridade interrompida após {max_iterations} iterações para '{organizacao}'")
+                    break
+                
+                csv_key_lower = csv_key.lower()
+                # Match mais preciso: município deve estar contido na chave ou vice-versa
+                if municipio_lower in csv_key_lower or csv_key_lower in municipio_lower:
+                    # Se temos estado, verificar se o estado também corresponde
+                    if estado_org and estado_lower:
+                        if estado_lower in csv_key_lower:
+                            teto_mensal = csv_teto
+                            if idx < 3:
+                                logger.info(f"Match por similaridade encontrado para '{organizacao}': chave '{csv_key}' -> teto_mensal={teto_mensal}")
+                            break
+                    else:
+                        teto_mensal = csv_teto
+                        if idx < 3:
+                            logger.info(f"Match por similaridade encontrado para '{organizacao}': chave '{csv_key}' -> teto_mensal={teto_mensal}")
+                        break
+            
+            # Se ainda não encontrou, logar para debug
+            if teto_mensal is None and idx < 5:
+                logger.warning(f"Não foi possível encontrar teto para '{organizacao}' (município: '{municipio_org}', estado: '{estado_org}')")
+        
+        if teto_mensal and teto_mensal > 0:
+            # Calcular: acumulativo / teto_mensal
+            # acumulativo_float já foi calculado acima
+            try:
+                resultado = acumulativo_float / teto_mensal
+                resultado_arredondado = round(resultado)
+                record['pec66_resultado'] = resultado
+                record['pec66_resultado_arredondado'] = resultado_arredondado
+
+                if idx < 5:
+                    logger.info(
+                        f"PEC66 calculado - Munic: {organizacao} | Acum: {acumulativo_float:.2f} | "
+                        f"Teto/12: {teto_mensal:.2f} | Resultado: {resultado:.2f} | "
+                        f"Arredondado: {resultado_arredondado}"
+                    )
+            except Exception as e:
+                logger.error(f"Erro ao calcular PEC66 para {organizacao}: {e}")
+                record['pec66_resultado'] = None
+                record['pec66_resultado_arredondado'] = None
+        else:
+            if idx < 5:
+                logger.warning(f"Não foi possível encontrar teto_mensal para '{organizacao}' (teto_mensal={teto_mensal})")
+            record['pec66_resultado'] = None
+            record['pec66_resultado_arredondado'] = None
+    
+    return records
+
+# Função principal para calcular os resultados
+def calculate_pec66_results():
+    """
+    Calcula os resultados do PEC 66:
+    1. Lê o CSV e obtém teto_repasse/12 por município
+    2. Calcula acumulativo por município no banco
+    3. Divide acumulativo por (teto_repasse/12) e arredonda
+    Retorna lista de resultados
+    """
+    # Carregar teto de repasse do CSV
+    teto_dict = load_teto_repasse_from_csv()
+    
+    if not teto_dict:
+        logger.warning("Nenhum teto de repasse carregado do CSV")
+        return []
+    
+    # Calcular acumulativo por município
+    acumulativo_dict = calculate_accumulative_by_municipio(db_manager)
+    
+    if not acumulativo_dict:
+        logger.warning("Nenhum acumulativo calculado")
+        return []
+    
+    # Combinar dados e calcular resultado
+    results = []
+    for municipio, acum_data in acumulativo_dict.items():
+        teto_mensal = teto_dict.get(municipio)
+        
+        if teto_mensal is None or teto_mensal == 0:
+            # Se não encontrou no CSV, tentar buscar por nome similar
+            # (alguns municípios podem ter nomes ligeiramente diferentes)
+            for csv_municipio, csv_teto in teto_dict.items():
+                if municipio.lower() in csv_municipio.lower() or csv_municipio.lower() in municipio.lower():
+                    teto_mensal = csv_teto
+                    break
+        
+        if teto_mensal and teto_mensal > 0:
+            acumulativo = acum_data['acumulativo']
+            # Calcular: acumulativo / (teto_repasse/12)
+            resultado = acumulativo / teto_mensal
+            resultado_arredondado = round(resultado)
+            
+            results.append({
+                'municipio': municipio,
+                'teto_repasse_anual': teto_mensal * 12,  # Para exibição
+                'teto_repasse_mensal': teto_mensal,
+                'acumulativo': acumulativo,
+                'quantidade': acum_data['quantidade'],
+                'resultado': resultado,
+                'resultado_arredondado': resultado_arredondado
+            })
+        else:
+            # Município sem teto no CSV
+            results.append({
+                'municipio': municipio,
+                'teto_repasse_anual': None,
+                'teto_repasse_mensal': None,
+                'acumulativo': acum_data['acumulativo'],
+                'quantidade': acum_data['quantidade'],
+                'resultado': None,
+                'resultado_arredondado': None
+            })
+    
+    # Ordenar por resultado (maior primeiro)
+    results.sort(key=lambda x: x['resultado'] if x['resultado'] is not None else -1, reverse=True)
+    
+    return results
+
 # Instância global do gerenciador de banco
 db_manager = DatabaseManager()
 
@@ -1372,6 +1863,148 @@ def index():
         # Obter dados paginados com ordenação (PRIORIDADE MÁXIMA)
         try:
             result = db_manager.get_precatorios_paginated(page=page, per_page=per_page, filters=filters, sort_field=sort_field, sort_order=sort_order)
+            # Calcular acumulativo e PEC 66 (meses) para cada registro
+            if result.get('data') and len(result['data']) > 0:
+                try:
+                    # Agrupar registros por organização
+                    organizacoes_dict = {}
+                    for record in result['data']:
+                        org = record.get('organizacao')
+                        if org:
+                            if org not in organizacoes_dict:
+                                organizacoes_dict[org] = []
+                            organizacoes_dict[org].append(record)
+                    
+                    # Para cada organização, buscar todos os registros ordenados por ordem
+                    # e calcular acumulativo
+                    teto_dict = get_teto_dict()
+                    
+                    for org, records_page in organizacoes_dict.items():
+                        # Buscar todos os registros desta organização do banco (ordenados por ordem)
+                        if db_manager.cursor:
+                            try:
+                                acum_query = f"""
+                                    SELECT ordem, valor
+                                    FROM {TABLE_NAME}
+                                    WHERE organizacao = %s 
+                                        AND esta_na_ordem = TRUE 
+                                        AND valor IS NOT NULL
+                                    ORDER BY ordem ASC
+                                """
+                                db_manager.cursor.execute(acum_query, (org,))
+                                all_records_org = db_manager.cursor.fetchall()
+                                
+                                # Calcular acumulativo progressivo
+                                acumulativo_dict = {}  # ordem -> acumulativo
+                                acumulativo = 0.0
+                                
+                                for row in all_records_org:
+                                    ordem = row.get('ordem')
+                                    valor = row.get('valor')
+                                    if ordem is not None and valor is not None:
+                                        try:
+                                            valor_float = float(valor) if isinstance(valor, (int, float)) else float(str(valor).replace(',', '.'))
+                                            acumulativo += valor_float
+                                            acumulativo_dict[int(ordem)] = acumulativo
+                                        except (ValueError, TypeError):
+                                            pass
+                                
+                                # Adicionar acumulativo aos registros da página atual
+                                for record in records_page:
+                                    ordem = record.get('ordem')
+                                    if ordem is not None:
+                                        try:
+                                            ordem_int = int(ordem)
+                                            record['acumulativo_pec66'] = acumulativo_dict.get(ordem_int)
+                                            
+                                            # Calcular meses (acumulativo / teto_mensal)
+                                            if record['acumulativo_pec66'] is not None:
+                                                # Buscar teto mensal do CSV
+                                                teto_mensal = None
+                                                
+                                                # Extrair município e estado
+                                                municipio_org = org.strip()
+                                                estado_org = None
+                                                
+                                                if ' - ' in municipio_org:
+                                                    parts = municipio_org.split(' - ', 1)
+                                                    municipio_org = parts[0].strip()
+                                                    estado_org = parts[1].strip() if len(parts) > 1 else None
+                                                
+                                                # Tentar diferentes chaves
+                                                search_keys = []
+                                                if estado_org:
+                                                    search_keys.append(f"{municipio_org} - {estado_org}")
+                                                    search_keys.append(f"{municipio_org}/{estado_org}")
+                                                search_keys.append(municipio_org)
+                                                
+                                                for key in search_keys:
+                                                    if key in teto_dict:
+                                                        teto_mensal = teto_dict[key]
+                                                        break
+                                                
+                                                # Se não encontrou, tentar busca por similaridade
+                                                if teto_mensal is None and teto_dict:
+                                                    municipio_lower = municipio_org.lower()
+                                                    for csv_key, csv_teto in teto_dict.items():
+                                                        if municipio_lower in csv_key.lower() or csv_key.lower() in municipio_lower:
+                                                            if estado_org and estado_org.lower() in csv_key.lower():
+                                                                teto_mensal = csv_teto
+                                                                break
+                                                            elif not estado_org:
+                                                                teto_mensal = csv_teto
+                                                                break
+                                                
+                                                # Calcular meses (acumulativo / teto_mensal)
+                                                if teto_mensal and teto_mensal > 0:
+                                                    meses = record['acumulativo_pec66'] / teto_mensal
+                                                    record['pec66_resultado'] = meses
+                                                    # Arredondar para cima (sempre para o próximo mês inteiro)
+                                                    record['pec66_resultado_arredondado'] = math.ceil(meses)
+                                                else:
+                                                    record['pec66_resultado'] = None
+                                                    record['pec66_resultado_arredondado'] = None
+                                            else:
+                                                record['pec66_resultado'] = None
+                                                record['pec66_resultado_arredondado'] = None
+                                        except (ValueError, TypeError):
+                                            record['acumulativo_pec66'] = None
+                                            record['pec66_resultado'] = None
+                                            record['pec66_resultado_arredondado'] = None
+                                    else:
+                                        record['acumulativo_pec66'] = None
+                                        record['pec66_resultado'] = None
+                                        record['pec66_resultado_arredondado'] = None
+                            except Exception as acum_error:
+                                logger.warning(f"Erro ao calcular acumulativo para {org}: {acum_error}")
+                                # Inicializar como None se houver erro
+                                for record in records_page:
+                                    record['acumulativo_pec66'] = None
+                                    record['pec66_resultado'] = None
+                                    record['pec66_resultado_arredondado'] = None
+                        else:
+                            # Se não houver cursor, inicializar como None
+                            for record in records_page:
+                                record['acumulativo_pec66'] = None
+                                record['pec66_resultado'] = None
+                                record['pec66_resultado_arredondado'] = None
+                    
+                    # Para registros sem organização, inicializar como None
+                    for record in result['data']:
+                        if not record.get('organizacao'):
+                            record['acumulativo_pec66'] = None
+                            record['pec66_resultado'] = None
+                            record['pec66_resultado_arredondado'] = None
+                            
+                except Exception as pec66_error:
+                    logger.error(f"Erro ao calcular PEC 66: {pec66_error}")
+                    import traceback
+                    logger.error(f"Traceback PEC 66: {traceback.format_exc()}")
+                    # Inicializar como None em caso de erro
+                    for record in result.get('data', []):
+                        record['acumulativo_pec66'] = None
+                        record['pec66_resultado'] = None
+                        record['pec66_resultado_arredondado'] = None
         except Exception as e:
             logger.error(f"Erro ao buscar precatórios: {e}")
             import traceback
@@ -1406,6 +2039,8 @@ def index():
             {'name': 'ano_orc', 'label': 'Ano Orçamentário', 'type': 'integer', 'editable': False, 'visible': True},
             {'name': 'situacao', 'label': 'Situação', 'type': 'character varying', 'editable': True, 'visible': True},
             {'name': 'valor', 'label': 'Valor', 'type': 'numeric', 'editable': True, 'visible': True},
+            {'name': 'acumulativo_pec66', 'label': 'Valor Acumulado', 'type': 'numeric', 'editable': False, 'visible': True},
+            {'name': 'pec66_resultado_arredondado', 'label': 'Meses', 'type': 'numeric', 'editable': False, 'visible': True},
             {'name': 'presenca_no_pipe', 'label': 'No Pipe', 'type': 'boolean', 'editable': False, 'visible': True},
         ]
         
@@ -1825,6 +2460,87 @@ def admin_apply_indexes():
         return jsonify({'success': False, 'message': str(e)}), 500
     finally:
         db_manager.disconnect()
+
+@app.route('/api/pec66_calculation', methods=['GET'])
+def api_pec66_calculation():
+    """API endpoint para retornar os cálculos do PEC 66"""
+    try:
+        results = calculate_pec66_results()
+        return jsonify({
+            'success': True,
+            'data': results,
+            'total': len(results)
+        })
+    except Exception as e:
+        logger.error(f"Erro ao calcular PEC 66: {e}")
+        return jsonify({
+            'success': False,
+            'message': str(e)
+        }), 500
+
+@app.route('/api/debug/pec66', methods=['GET'])
+def debug_pec66():
+    """Endpoint de debug para testar o cálculo PEC 66"""
+    try:
+        # Forçar reload do cache
+        global _cached_teto_dict, _teto_cache_timestamp
+        _cached_teto_dict = None
+        _teto_cache_timestamp = None
+        
+        teto_dict = get_teto_dict()
+        
+        # Buscar alguns registros do banco
+        if not db_manager.connect():
+            return jsonify({'success': False, 'message': 'Erro ao conectar ao banco'}), 500
+        
+        query = """
+            SELECT organizacao, ordem, valor,
+                SUM(COALESCE(valor, 0)) OVER (
+                    PARTITION BY organizacao 
+                    ORDER BY ordem ASC 
+                    ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+                ) as acumulativo_pec66
+            FROM precatorios
+            WHERE esta_na_ordem = TRUE AND valor IS NOT NULL
+            ORDER BY organizacao, ordem
+            LIMIT 10
+        """
+        
+        db_manager.cursor.execute(query)
+        records = db_manager.cursor.fetchall()
+        
+        # Calcular PEC 66 para esses registros
+        test_records = [dict(r) for r in records]
+        calculated = calculate_pec66_for_records(test_records)
+        
+        return jsonify({
+            'success': True,
+            'teto_dict_size': len(teto_dict),
+            'teto_dict_sample': dict(list(teto_dict.items())[:5]),
+            'records': calculated,
+            'first_record_keys': list(calculated[0].keys()) if calculated else []
+        })
+    except Exception as e:
+        import traceback
+        logger.error(f"Erro no debug PEC 66: {e}\n{traceback.format_exc()}")
+        return jsonify({
+            'success': False,
+            'message': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
+    finally:
+        db_manager.disconnect()
+
+@app.route('/pec66')
+def pec66_page():
+    """Página para exibir os cálculos do PEC 66"""
+    try:
+        results = calculate_pec66_results()
+        return render_template('pec66.html', results=results)
+    except Exception as e:
+        logger.error(f"Erro ao carregar página PEC 66: {e}")
+        flash(f'Erro ao carregar cálculos: {str(e)}', 'error')
+        return redirect(url_for('index'))
 
 @app.route('/api/get_filter_options', methods=['GET'])
 def get_filter_options():
