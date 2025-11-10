@@ -218,39 +218,8 @@ class DatabaseManager:
                     # Permitir filtros especiais que não são colunas diretas
                     is_special_range = field in ('valor_min', 'valor_max')
                     if value and (field in fields or is_special_range):
-                        # Para valor, usar comparação <= (menor ou igual) e converter para float
-                        if field == 'valor':
-                            try:
-                                # Converter valor para float
-                                # O valor já vem normalizado da rota principal, mas pode ser string numérica
-                                if isinstance(value, str):
-                                    # Se já é numérico (sem caracteres especiais), usar diretamente
-                                    try:
-                                        valor_float = float(value)
-                                    except ValueError:
-                                        # Tentar normalizar se houver caracteres especiais
-                                        normalized_val = value.replace('R$', '').replace(' ', '').replace(',', '.')
-                                        normalized_val = re.sub(r"[^0-9.]", "", normalized_val)
-                                        if normalized_val:
-                                            valor_float = float(normalized_val)
-                                        else:
-                                            logger.warning(f"Valor inválido para filtro de {field}: {value}")
-                                            continue
-                                else:
-                                    valor_float = float(value)
-                                
-                                # Aplicar filtro apenas se valor for válido e > 0
-                                if valor_float > 0:
-                                    where_conditions.append(f"{field} <= %s")
-                                    params.append(valor_float)
-                                else:
-                                    logger.warning(f"Valor deve ser maior que zero: {valor_float}")
-                            except (ValueError, TypeError) as e:
-                                # Se não conseguir converter, ignora o filtro
-                                logger.warning(f"Valor inválido para filtro de {field}: {value} - Erro: {e}")
-                                continue
                         # Para filtros de valor range (valor_min e valor_max)
-                        elif field == 'valor_min':
+                        if field == 'valor_min':
                             try:
                                 # Converter valor mínimo para float
                                 normalized_val = value.replace('R$', '').replace(' ', '').replace(',', '.')
@@ -1308,7 +1277,7 @@ def index():
         # Com índice idx_precatorios_esta_ordem_valor, a query é rápida (~100-500ms)
         max_valor = get_cached_max_valor()
 
-        # Filtro de valor: "até R$" - aplicar somente se > 0
+        # Filtros de valor: valor mínimo e valor máximo
         def _normalize_currency_str(s: str):
             if not s or not s.strip():
                 return None
@@ -1328,15 +1297,19 @@ def index():
                 logger.warning(f"Erro ao normalizar valor: {s} - {e}")
                 return None
 
-        raw_valor = request.args.get('filter_valor', '').strip()
-        normalized_valor = _normalize_currency_str(raw_valor)
+        # Processar valor mínimo
+        raw_valor_min = request.args.get('filter_valor_min', '').strip()
+        normalized_valor_min = _normalize_currency_str(raw_valor_min)
+        if normalized_valor_min is not None and normalized_valor_min > 0:
+            filters['valor_min'] = str(normalized_valor_min)
+            logger.info(f"Filtro de valor mínimo aplicado: >= {normalized_valor_min}")
 
-        # Apenas aplica filtro se valor for > 0
-        if normalized_valor is not None and normalized_valor > 0:
-            filters['valor'] = str(normalized_valor)
-            logger.info(f"Filtro de valor aplicado: <= {normalized_valor}")
-        else:
-            logger.info(f"Filtro de valor não aplicado - valor recebido: {raw_valor}, normalizado: {normalized_valor}")
+        # Processar valor máximo
+        raw_valor_max = request.args.get('filter_valor_max', '').strip()
+        normalized_valor_max = _normalize_currency_str(raw_valor_max)
+        if normalized_valor_max is not None and normalized_valor_max > 0:
+            filters['valor_max'] = str(normalized_valor_max)
+            logger.info(f"Filtro de valor máximo aplicado: <= {normalized_valor_max}")
         
         # Filtro padrão: mostrar apenas precatórios que estão na ordem
         # Mas respeitar se o usuário selecionou "Todos" (valor vazio explícito)

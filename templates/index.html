@@ -204,11 +204,21 @@
                         </div>
                             </div>
                             <div class="row g-3 mt-1">
-                                <div class="col-md-3">
-                                    <label class="form-label small fw-semibold text-muted mb-1">Valor até</label>
+                                <div class="col-md-2">
+                                    <label class="form-label small fw-semibold text-muted mb-1">Valor Mínimo</label>
                                     <input type="number" class="form-control form-control-sm"
-                                           name="filter_valor"
-                                           value="{{ filters.get('valor', '') }}"
+                                           name="filter_valor_min"
+                                           value="{{ filters.get('valor_min', '') }}"
+                                           placeholder="R$ 0,00"
+                                           min="0"
+                                           max="{{ max_valor or 0 }}"
+                                           step="0.01">
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label small fw-semibold text-muted mb-1">Valor Máximo</label>
+                                    <input type="number" class="form-control form-control-sm"
+                                           name="filter_valor_max"
+                                           value="{{ filters.get('valor_max', '') }}"
                                            placeholder="R$ 0,00"
                                            min="0"
                                            max="{{ max_valor or 0 }}"
@@ -428,49 +438,49 @@
     <!-- Modal de Edição em Massa -->
     <div class="modal fade" id="bulkEditModal" tabindex="-1">
         <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">
+            <div class="modal-content dark-modal">
+                <div class="modal-header dark-modal-header">
+                    <h5 class="modal-title" style="color: #ffffff;">
                         <i class="fas fa-edit me-2"></i>Edição em Massa
                     </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
-                <div class="modal-body">
+                <div class="modal-body dark-modal-body">
                     <div class="row">
                         <div class="col-md-6">
-                            <h6>Registros Selecionados:</h6>
-                            <div id="selectedRecords" class="border p-2 mb-3" style="max-height: 200px; overflow-y: auto;">
-                                <small class="text-muted">Nenhum registro selecionado</small>
+                            <h6 style="color: #ffffff; margin-bottom: 0.75rem;">Registros Selecionados:</h6>
+                            <div id="selectedRecords" class="border p-2 mb-3" style="max-height: 200px; overflow-y: auto; background: rgba(15, 20, 28, 0.8); border-color: rgba(212, 175, 55, 0.3) !important; border-radius: 6px;">
+                                <small style="color: #a0a0a0;">Nenhum registro selecionado</small>
                             </div>
                             <div class="btn-group mb-2" role="group">
-                                <button class="btn btn-sm btn-outline-primary" onclick="selectAllVisible()">
+                                <button class="btn btn-sm btn-nav-action" onclick="selectAllVisible()">
                                     <i class="fas fa-check-square me-1"></i>Página Atual
                                 </button>
-                                <button class="btn btn-sm btn-outline-success" onclick="selectAllPages()">
+                                <button class="btn btn-sm btn-nav-action" onclick="selectAllPages()">
                                     <i class="fas fa-check-double me-1"></i>Todas as Páginas
                                 </button>
-                                <button class="btn btn-sm btn-outline-secondary" onclick="clearSelection()">
+                                <button class="btn btn-sm btn-nav-action" onclick="clearSelection()">
                                     <i class="fas fa-square me-1"></i>Limpar
                                 </button>
                             </div>
                             <div class="mb-2">
-                                <small class="text-muted">
+                                <small style="color: #a0a0a0;">
                                     <i class="fas fa-info-circle me-1"></i>
                                     <span id="selectionInfo">Selecione registros para edição em massa</span>
                                 </small>
                             </div>
                         </div>
                         <div class="col-md-6">
-                            <h6>Campos para Atualizar:</h6>
+                            <h6 style="color: #ffffff; margin-bottom: 0.75rem;">Campos para Atualizar:</h6>
                             <div id="editableFields">
                                 <!-- Campos editáveis serão inseridos aqui via JavaScript -->
                             </div>
                         </div>
                     </div>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="button" class="btn btn-primary" onclick="confirmBulkUpdate()">
+                <div class="modal-footer dark-modal-footer">
+                    <button type="button" class="btn btn-nav-action" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn precs-btn-gold" onclick="confirmBulkUpdate()">
                         <i class="fas fa-save me-1"></i>Atualizar Selecionados
                     </button>
                 </div>
@@ -481,18 +491,18 @@
     <!-- Modal de confirmação -->
     <div class="modal fade" id="confirmModal" tabindex="-1">
         <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Confirmar Atualização</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            <div class="modal-content dark-modal">
+                <div class="modal-header dark-modal-header">
+                    <h5 class="modal-title" style="color: #ffffff;">Confirmar Atualização</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
-                <div class="modal-body">
-                    <p>Deseja realmente salvar as alterações no banco de dados?</p>
+                <div class="modal-body dark-modal-body">
+                    <p style="color: #e0e0e0;">Deseja realmente salvar as alterações no banco de dados?</p>
                     <div id="changesSummary"></div>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="button" class="btn btn-success" onclick="confirmSave()">Confirmar</button>
+                <div class="modal-footer dark-modal-footer">
+                    <button type="button" class="btn btn-nav-action" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn precs-btn-gold" onclick="confirmSave()">Confirmar</button>
                 </div>
             </div>
         </div>

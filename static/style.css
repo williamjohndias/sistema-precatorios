@@ -872,11 +872,52 @@ body::after {
     border-radius: 0.5rem 0.5rem 0 0;
 }
 
+/* Modais em modo escuro */
+.dark-modal {
+    background: rgba(15, 20, 28, 0.95);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(212, 175, 55, 0.3);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.dark-modal-header {
+    background: rgba(10, 15, 22, 0.9);
+    border-bottom: 1px solid rgba(212, 175, 55, 0.3);
+    border-radius: 0.5rem 0.5rem 0 0;
+}
+
+.dark-modal-body {
+    background: rgba(15, 20, 28, 0.95);
+    color: #e0e0e0;
+}
+
+.dark-modal-footer {
+    background: rgba(10, 15, 22, 0.9);
+    border-top: 1px solid rgba(212, 175, 55, 0.3);
+    border-radius: 0 0 0.5rem 0.5rem;
+}
+
+.dark-modal h6 {
+    color: #ffffff;
+}
+
+.dark-modal .text-muted {
+    color: #a0a0a0 !important;
+}
+
 /* Estilo para resumo de alterações */
 #changesSummary {
     background-color: #f8f9fa;
     border: 1px solid #dee2e6;
     border-radius: 0.25rem;
+    padding: 1rem;
+    margin-top: 1rem;
+}
+
+.dark-modal #changesSummary {
+    background-color: rgba(10, 15, 22, 0.8);
+    border: 1px solid rgba(212, 175, 55, 0.3);
+    border-radius: 0.375rem;
     padding: 1rem;
     margin-top: 1rem;
 }
@@ -889,6 +930,10 @@ body::after {
     border-bottom: 1px solid #e9ecef;
 }
 
+.dark-modal .change-item {
+    border-bottom: 1px solid rgba(212, 175, 55, 0.2);
+}
+
 .change-item:last-child {
     border-bottom: none;
 }
@@ -898,9 +943,17 @@ body::after {
     color: #495057;
 }
 
+.dark-modal .field-name {
+    color: #ffffff;
+}
+
 .field-change {
     font-size: 0.875rem;
     color: #6c757d;
+}
+
+.dark-modal .field-change {
+    color: #a0a0a0;
 }
 
 .field-change .old-value {
@@ -908,8 +961,18 @@ body::after {
     text-decoration: line-through;
 }
 
+.dark-modal .field-change .old-value {
+    color: #ff6b6b;
+    text-decoration: line-through;
+}
+
 .field-change .new-value {
     color: #28a745;
+    font-weight: 600;
+}
+
+.dark-modal .field-change .new-value {
+    color: #51cf66;
     font-weight: 600;
 }
 
@@ -1025,14 +1088,43 @@ tr.selected:hover {
     border-radius: 0.375rem;
 }
 
+.dark-modal #selectedRecords {
+    background-color: rgba(15, 20, 28, 0.8);
+    border-color: rgba(212, 175, 55, 0.3) !important;
+}
+
+.dark-modal #selectedRecords small {
+    color: #a0a0a0;
+}
+
 #editableFields .form-control {
     border: 1px solid #ced4da;
     transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
 }
 
-#editableFields .form-control:focus {
-    border-color: #D2AF52;
-    box-shadow: 0 0 0 0.25rem rgba(210, 175, 82, 0.35);
+.dark-modal #editableFields .form-control {
+    background: rgba(15, 20, 28, 0.8);
+    border: 1px solid rgba(212, 175, 55, 0.3);
+    color: #ffffff;
+}
+
+.dark-modal #editableFields .form-control:focus {
+    background: rgba(10, 15, 22, 0.95);
+    border-color: rgba(212, 175, 55, 0.5);
+    box-shadow: 0 0 0 0.25rem rgba(212, 175, 55, 0.25);
+    color: #ffffff;
+}
+
+.dark-modal #editableFields .form-control::placeholder {
+    color: #666;
+}
+
+.dark-modal #editableFields label {
+    color: #ffffff;
+}
+
+.dark-modal #editableFields .form-label {
+    color: #ffffff;
 }
 
 /* Indicadores de campos editáveis */
