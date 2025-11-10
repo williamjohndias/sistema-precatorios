@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cálculo PEC 66 - Precs</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
+</head>
+<body>
+    <!-- Partículas de símbolos jurídicos -->
+    <div class="justice-particles">
+        <div class="justice-particle">⚖</div>
+        <div class="justice-particle">📜</div>
+        <div class="justice-particle">⚖</div>
+        <div class="justice-particle">📜</div>
+        <div class="justice-particle">⚖</div>
+        <div class="justice-particle">📜</div>
+        <div class="justice-particle">⚖</div>
+        <div class="justice-particle">📜</div>
+        <div class="justice-particle">⚖</div>
+    </div>
+    
+    <nav class="navbar navbar-expand-lg navbar-dark precs-navbar">
+        <div class="container-fluid px-4">
+            <a class="navbar-brand d-flex align-items-center" href="{{ url_for('index') }}">
+                <div class="logo-icon me-3">
+                    <i class="fas fa-balance-scale"></i>
+                </div>
+                <div class="d-flex flex-column">
+                    <span class="fw-bold precs-logo-text mb-0">Precs</span>
+                    <span class="precs-subtitle small">Sistema de Precatórios</span>
+                </div>
+            </a>
+            <div class="d-flex gap-3 align-items-center">
+                <a class="btn btn-nav-action" href="{{ url_for('index') }}">
+                    <i class="fas fa-table me-2"></i>Precatórios
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="main-container">
+        <!-- Alertas -->
+        <div id="alertContainer" class="alert-container"></div>
+
+        <!-- Header Section -->
+        <div class="page-header">
+            <div class="header-content">
+                <div class="header-title-section">
+                    <h1 class="page-title">
+                        <i class="fas fa-calculator me-3"></i>
+                        Cálculo PEC 66
+                    </h1>
+                    <p class="page-subtitle">Cálculo dinâmico baseado em teto de repasse e acumulativo por município</p>
+                </div>
+                <div class="header-stats">
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-city"></i>
+                        </div>
+                        <div class="stat-content">
+                            <div class="stat-value" style="color: #ffffff;">{{ results|length }}</div>
+                            <div class="stat-label">Municípios</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabela de Resultados -->
+        <div class="table-section">
+            <div class="table-card">
+                <div class="table-header">
+                    <div class="table-header-left">
+                        <i class="fas fa-table me-2"></i>
+                        <span>Resultados do Cálculo</span>
+                    </div>
+                </div>
+                <div class="table-body">
+                    <div class="table-responsive-wrapper">
+                        <table class="table table-hover">
+                            <thead class="table-header-sticky">
+                                <tr>
+                                    <th>Município</th>
+                                    <th>Teto Repasse Anual</th>
+                                    <th>Teto Repasse Mensal</th>
+                                    <th>Acumulativo</th>
+                                    <th>Quantidade</th>
+                                    <th>Resultado</th>
+                                    <th>Resultado Arredondado</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if results %}
+                                    {% for item in results %}
+                                    <tr>
+                                        <td><strong>{{ item.municipio }}</strong></td>
+                                        <td>
+                                            {% if item.teto_repasse_anual %}
+                                                {{ item.teto_repasse_anual|currency_br }}
+                                            {% else %}
+                                                <span class="text-muted">N/A</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if item.teto_repasse_mensal %}
+                                                {{ item.teto_repasse_mensal|currency_br }}
+                                            {% else %}
+                                                <span class="text-muted">N/A</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ item.acumulativo|currency_br }}</td>
+                                        <td>{{ item.quantidade }}</td>
+                                        <td>
+                                            {% if item.resultado is not none %}
+                                                {{ "%.2f"|format(item.resultado) }}
+                                            {% else %}
+                                                <span class="text-muted">N/A</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if item.resultado_arredondado is not none %}
+                                                <span class="badge bg-warning text-dark">{{ item.resultado_arredondado }}</span>
+                                            {% else %}
+                                                <span class="text-muted">N/A</span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="7" class="text-center text-muted">
+                                            <i class="fas fa-info-circle me-2"></i>
+                                            Nenhum resultado encontrado
+                                        </td>
+                                    </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Rodapé -->
+    <footer class="footer mt-5">
+        <div class="footer-content">
+            <div class="container">
+                <div class="row align-items-center">
+                    <div class="col-md-4 text-center text-md-start mb-3 mb-md-0">
+                        <div class="footer-logo">
+                            <i class="fas fa-balance-scale footer-icon"></i>
+                            <h5 class="footer-title mb-0">Sistema de Precatórios</h5>
+                        </div>
+                    </div>
+                    <div class="col-md-4 text-center mb-3 mb-md-0">
+                        <div class="header-stats">
+                            <div class="stat-card">
+                                <div class="stat-icon">
+                                    <i class="fas fa-city"></i>
+                                </div>
+                                <div class="stat-content">
+                                    <div class="stat-value" style="color: #ffffff;">{{ results|length }}</div>
+                                    <div class="stat-label">Total de Municípios</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4 text-center text-md-end">
+                        <div class="footer-info">
+                            <p class="mb-0">
+                                <i class="fas fa-calendar me-2"></i>
+                                {{ "now"|date("%Y") }}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="footer-copyright text-center py-3">
+            <p class="mb-0">&copy; {{ "now"|date("%Y") }} Precs - Sistema de Precatórios. Todos os direitos reservados.</p>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
+
