@@ -1671,7 +1671,14 @@ def enrich_records_with_pec66(records: List[Dict[str, Any]], db_manager: 'Databa
             logger.error("db_manager não está disponível")
             return calculate_pec66_for_records(records)
         
-        if not db_manager.connection or db_manager.connection.closed:
+        # Verificar se a conexão está aberta, mas não tentar reconectar se já estiver
+        # A conexão deve ser gerenciada pela rota principal
+        if not db_manager.connection:
+            logger.error("Conexão não está disponível")
+            return calculate_pec66_for_records(records)
+        
+        if db_manager.connection.closed:
+            logger.warning("Conexão está fechada, tentando reconectar")
             if not db_manager.connect():
                 logger.error("Não foi possível conectar ao banco de dados")
                 return calculate_pec66_for_records(records)
@@ -1679,7 +1686,11 @@ def enrich_records_with_pec66(records: List[Dict[str, Any]], db_manager: 'Databa
         # Garantir que o cursor está disponível
         if not db_manager.cursor or db_manager.cursor.closed:
             try:
-                db_manager.cursor = db_manager.connection.cursor()
+                if db_manager.connection and not db_manager.connection.closed:
+                    db_manager.cursor = db_manager.connection.cursor()
+                else:
+                    logger.error("Não é possível criar cursor: conexão fechada")
+                    return calculate_pec66_for_records(records)
             except Exception as e:
                 logger.error(f"Erro ao criar cursor: {e}")
                 return calculate_pec66_for_records(records)
@@ -1696,8 +1707,27 @@ def enrich_records_with_pec66(records: List[Dict[str, Any]], db_manager: 'Databa
                         AND valor IS NOT NULL
                     ORDER BY ordem ASC
                 """
-                db_manager.cursor.execute(acum_query, (org,))
-                all_records_org = db_manager.cursor.fetchall()
+                # Verificar se cursor ainda está válido antes de usar
+                if not db_manager.cursor or db_manager.cursor.closed:
+                    if db_manager.connection and not db_manager.connection.closed:
+                        db_manager.cursor = db_manager.connection.cursor()
+                    else:
+                        logger.error(f"Conexão/cursor inválido para {org}, pulando")
+                        continue
+                
+                try:
+                    db_manager.cursor.execute(acum_query, (org,))
+                    all_records_org = db_manager.cursor.fetchall()
+                except (ProgrammingError, Exception) as fetch_error:
+                    error_str = str(fetch_error).lower()
+                    if ('no results to fetch' in error_str or 
+                        'no results' in error_str or
+                        'no row' in error_str or
+                        'result has already been consumed' in error_str):
+                        all_records_org = []
+                    else:
+                        logger.warning(f"Erro ao buscar registros para {org}: {fetch_error}")
+                        all_records_org = []
 
                 # Calcular acumulativo progressivo
                 acumulativo_dict = {}  # ordem -> acumulativo
@@ -2129,7 +2159,13 @@ def index():
             # Calcular acumulativo e PEC 66 (meses) para cada registro
             registros_pagina = result.get('data', [])
             if registros_pagina:
-                enrich_records_with_pec66(registros_pagina, db_manager)
+                try:
+                    enrich_records_with_pec66(registros_pagina, db_manager)
+                except Exception as pec66_error:
+                    logger.error(f"Erro ao enriquecer registros com PEC 66: {pec66_error}")
+                    import traceback
+                    logger.error(f"Traceback PEC 66: {traceback.format_exc()}")
+                    # Continuar mesmo com erro no PEC 66 - os dados básicos já foram carregados
         except Exception as e:
             logger.error(f"Erro ao buscar precatórios: {e}")
             import traceback
