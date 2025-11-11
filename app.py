@@ -1680,55 +1680,105 @@ def enrich_records_with_pec66(records: List[Dict[str, Any]], db_manager: 'Databa
             else:
                 return calculate_pec66_for_records(records)
 
-        value_rows = []
-        params: List[Any] = []
+        now = datetime.now()
+        acumulativos_por_org: Dict[str, Dict[int, Optional[float]]] = {}
+        to_fetch: Dict[str, int] = {}
+
         for org, max_ordem in max_ordem_por_org.items():
-            value_rows.append("(%s, %s)")
-            params.extend([org, max_ordem])
+            cache_entry = _pec66_acumulativo_cache.get(org)
+            cache_ts = _pec66_cache_timestamp.get(org)
+            if (
+                cache_entry
+                and cache_ts
+                and (now - cache_ts) < PEC66_CACHE_TTL
+                and cache_entry.get('max_ordem', 0) >= max_ordem
+            ):
+                acumulativos_por_org[org] = cache_entry.get('acumulativos', {}).copy()
+            else:
+                to_fetch[org] = max_ordem
 
-        if not value_rows:
-            return calculate_pec66_for_records(records)
+        if to_fetch:
+            value_rows = []
+            params: List[Any] = []
+            for org, max_ordem in to_fetch.items():
+                value_rows.append("(%s, %s)")
+                params.extend([org, max_ordem])
 
-        values_clause = ','.join(value_rows)
-        acum_query = f"""
-            WITH limites(organizacao, max_ordem) AS (
-                VALUES {values_clause}
-            )
-            SELECT
-                p.organizacao,
-                p.ordem,
-                SUM(COALESCE(p.valor, 0)) OVER (
-                    PARTITION BY p.organizacao
-                    ORDER BY p.ordem ASC
-                    ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-                ) AS acumulativo_pec66
-            FROM {TABLE_NAME} p
-            JOIN limites l ON l.organizacao = p.organizacao
-            WHERE p.esta_na_ordem = TRUE
-              AND p.valor IS NOT NULL
-              AND p.ordem <= l.max_ordem
-            ORDER BY p.organizacao, p.ordem
-        """
+            if value_rows:
+                values_clause = ','.join(value_rows)
+                acum_query = f"""
+                    WITH limites(organizacao, max_ordem) AS (
+                        VALUES {values_clause}
+                    )
+                    SELECT
+                        p.organizacao,
+                        p.ordem,
+                        SUM(COALESCE(p.valor, 0)) OVER (
+                            PARTITION BY p.organizacao
+                            ORDER BY p.ordem ASC
+                            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+                        ) AS acumulativo_pec66
+                    FROM {TABLE_NAME} p
+                    JOIN limites l ON l.organizacao = p.organizacao
+                    WHERE p.esta_na_ordem = TRUE
+                      AND p.valor IS NOT NULL
+                      AND p.ordem <= l.max_ordem
+                    ORDER BY p.organizacao, p.ordem
+                """
 
-        db_manager.cursor.execute(acum_query, params)
-        acum_rows = db_manager.cursor.fetchall()
+                db_manager.cursor.execute(acum_query, params)
+                acum_rows = db_manager.cursor.fetchall()
 
-        acumulativos_por_org: Dict[str, Dict[int, Optional[float]]] = defaultdict(dict)
-        for row in acum_rows:
-            org = row.get('organizacao')
-            ordem = row.get('ordem')
-            acumulativo = row.get('acumulativo_pec66')
-            if org is None or ordem is None:
+                fetched: Dict[str, Dict[int, Optional[float]]] = defaultdict(dict)
+                for row in acum_rows:
+                    org = row.get('organizacao')
+                    ordem = row.get('ordem')
+                    acumulativo = row.get('acumulativo_pec66')
+                    if org is None or ordem is None:
+                        continue
+                    try:
+                        ordem_int = int(ordem)
+                    except (ValueError, TypeError):
+                        continue
+                    try:
+                        acumulativo_float = float(acumulativo) if acumulativo is not None else None
+                    except (ValueError, TypeError):
+                        acumulativo_float = None
+                    fetched[org][ordem_int] = acumulativo_float
+
+                for org, dados in fetched.items():
+                    if dados:
+                        max_ordem_dados = max(dados.keys())
+                    else:
+                        max_ordem_dados = to_fetch.get(org, 0)
+                    acumulativos_por_org[org] = dict(dados)
+                    _pec66_acumulativo_cache[org] = {
+                        'max_ordem': max_ordem_dados,
+                        'acumulativos': dict(dados)
+                    }
+                    _pec66_cache_timestamp[org] = now
+
+                for org, max_ordem in to_fetch.items():
+                    if org not in acumulativos_por_org:
+                        acumulativos_por_org[org] = {}
+                        _pec66_acumulativo_cache[org] = {
+                            'max_ordem': max_ordem,
+                            'acumulativos': {}
+                        }
+                        _pec66_cache_timestamp[org] = now
+
+        for org, dados in list(acumulativos_por_org.items()):
+            if org not in max_ordem_por_org:
                 continue
-            try:
-                ordem_int = int(ordem)
-            except (ValueError, TypeError):
-                continue
-            try:
-                acumulativo_float = float(acumulativo) if acumulativo is not None else None
-            except (ValueError, TypeError):
-                acumulativo_float = None
-            acumulativos_por_org[org][ordem_int] = acumulativo_float
+            cache_entry = _pec66_acumulativo_cache.get(org)
+            cache_ts = _pec66_cache_timestamp.get(org)
+            if (
+                cache_entry
+                and cache_ts
+                and cache_entry.get('max_ordem', 0) >= max_ordem_por_org[org]
+                and (now - cache_ts) < PEC66_CACHE_TTL
+            ):
+                acumulativos_por_org[org] = cache_entry.get('acumulativos', {}).copy()
 
         for record in records:
             org = record.get('organizacao')
