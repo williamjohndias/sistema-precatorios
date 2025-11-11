@@ -33,9 +33,6 @@
                 </div>
             </a>
             <div class="d-flex gap-3 align-items-center">
-                <a class="btn btn-nav-action" href="{{ url_for('pec66_page') }}">
-                    <i class="fas fa-calculator me-2"></i>PEC 66
-                </a>
                 <a class="btn btn-nav-action" href="{{ url_for('logs') }}">
                     <i class="fas fa-history me-2"></i>Logs
                 </a>
@@ -100,20 +97,21 @@
                 </div>
                 <div class="filters-body">
                     <form method="GET" id="filterForm" onsubmit="showFilterLoading()">
-                    <div class="row g-3">
+                    <!-- Primeira linha: Campos de busca -->
+                    <div class="row g-2 mb-2">
                         <div class="col-md-2">
                             <label class="form-label small fw-semibold text-muted mb-1">Precatório</label>
                             <input type="text" class="form-control form-control-sm" 
                                    name="filter_precatorio" 
                                    value="{{ filters.get('precatorio', '') }}"
-                                   placeholder="Buscar...">
+                                   placeholder="Número...">
                         </div>
-                        <div class="col-md-2">
+                        <div class="col-md-1">
                             <label class="form-label small fw-semibold text-muted mb-1">Ordem</label>
                             <input type="text" class="form-control form-control-sm" 
                                    name="filter_ordem" 
                                    value="{{ filters.get('ordem', '') }}"
-                                   placeholder="Buscar...">
+                                   placeholder="Nº">
                         </div>
                         <div class="col-md-4">
                             <label class="form-label small fw-semibold text-muted mb-1">Organização</label>
@@ -152,107 +150,312 @@
                             </div>
                         </div>
                         <div class="col-md-2">
+                            <label class="form-label small fw-semibold text-muted mb-1">Valor Mínimo</label>
+                            <input type="number" class="form-control form-control-sm"
+                                   name="filter_valor_min"
+                                   value="{{ filters.get('valor_min', '') }}"
+                                   placeholder="R$ Min"
+                                   step="0.01">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small fw-semibold text-muted mb-1">Valor Máximo</label>
+                            <input type="number" class="form-control form-control-sm"
+                                   name="filter_valor_max"
+                                   value="{{ filters.get('valor_max', '') }}"
+                                   placeholder="R$ Max"
+                                   step="0.01">
+                        </div>
+                    </div>
+
+                    <!-- Segunda linha: Filtros multiselect principais -->
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-2">
+                            <label class="form-label small fw-semibold text-muted mb-1">Tribunal</label>
+                            <div class="multiselect-dropdown" data-field="tribunal">
+                                <div class="multiselect-display">
+                                    <input type="text" class="multiselect-input" placeholder="Selecione..." readonly>
+                                    <i class="fas fa-chevron-down multiselect-arrow"></i>
+                                </div>
+                                <div class="multiselect-dropdown-menu">
+                                    <div class="multiselect-search">
+                                        <input type="text" class="form-control form-control-sm" placeholder="Buscar...">
+                                    </div>
+                                    <div class="multiselect-options">
+                                        {% set filter_tribunal = filters.get('tribunal', []) %}
+                                        {% for value in filter_values.tribunal %}
+                                        <div class="multiselect-option" data-value="{{ value }}">
+                                            <input type="checkbox" id="tribunal_{{ loop.index }}"
+                                                {% if filter_tribunal and filter_tribunal|length > 0 %}
+                                                    {% if filter_tribunal is string %}
+                                                        {% if filter_tribunal|string == value|string %}checked{% endif %}
+                                                    {% elif filter_tribunal is iterable %}
+                                                        {% set is_selected = false %}
+                                                        {% for filter_val in filter_tribunal %}
+                                                            {% if filter_val|string == value|string %}
+                                                                {% set is_selected = true %}
+                                                            {% endif %}
+                                                        {% endfor %}
+                                                        {% if is_selected %}checked{% endif %}
+                                                    {% endif %}
+                                                {% endif %}>
+                                            <label for="tribunal_{{ loop.index }}">{{ value }}</label>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                                {% if filters.get('tribunal', []) %}
+                                    {% for val in filters.get('tribunal', []) %}
+                                        <input type="hidden" name="filter_tribunal" value="{{ val }}">
+                                    {% endfor %}
+                                {% else %}
+                                    <input type="hidden" name="filter_tribunal" value="">
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="col-md-2">
                             <label class="form-label small fw-semibold text-muted mb-1">Prioridade</label>
-                            <select class="form-select form-select-sm" name="filter_prioridade">
-                                <option value="">Todas</option>
-                                {% for value in filter_values.prioridade %}
-                                <option value="{{ value }}" {% if filters.get('prioridade') == value %}selected{% endif %}>{{ value }}</option>
-                                {% endfor %}
-                            </select>
+                            <div class="multiselect-dropdown" data-field="prioridade">
+                                <div class="multiselect-display">
+                                    <input type="text" class="multiselect-input" placeholder="Selecione..." readonly>
+                                    <i class="fas fa-chevron-down multiselect-arrow"></i>
+                                </div>
+                                <div class="multiselect-dropdown-menu">
+                                    <div class="multiselect-search">
+                                        <input type="text" class="form-control form-control-sm" placeholder="Buscar...">
+                                    </div>
+                                    <div class="multiselect-options">
+                                        {% set filter_prioridade = filters.get('prioridade', []) %}
+                                        {% for value in filter_values.prioridade %}
+                                        <div class="multiselect-option" data-value="{{ value }}">
+                                            <input type="checkbox" id="prioridade_{{ loop.index }}"
+                                                {% if filter_prioridade and filter_prioridade|length > 0 %}
+                                                    {% if filter_prioridade is string %}
+                                                        {% if filter_prioridade|string == value|string %}checked{% endif %}
+                                                    {% elif filter_prioridade is iterable %}
+                                                        {% set is_selected = false %}
+                                                        {% for filter_val in filter_prioridade %}
+                                                            {% if filter_val|string == value|string %}
+                                                                {% set is_selected = true %}
+                                                            {% endif %}
+                                                        {% endfor %}
+                                                        {% if is_selected %}checked{% endif %}
+                                                    {% endif %}
+                                                {% endif %}>
+                                            <label for="prioridade_{{ loop.index }}">{{ value }}</label>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                                {% if filters.get('prioridade', []) %}
+                                    {% for val in filters.get('prioridade', []) %}
+                                        <input type="hidden" name="filter_prioridade" value="{{ val }}">
+                                    {% endfor %}
+                                {% else %}
+                                    <input type="hidden" name="filter_prioridade" value="">
+                                {% endif %}
+                            </div>
                         </div>
                         <div class="col-md-2">
                             <label class="form-label small fw-semibold text-muted mb-1">Natureza</label>
-                            <select class="form-select form-select-sm" name="filter_natureza">
-                                <option value="">Todas</option>
-                                {% for value in filter_values.natureza %}
-                                <option value="{{ value }}" {% if filters.get('natureza') == value %}selected{% endif %}>{{ value }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                        <div class="col-md-2">
-                            <label class="form-label small fw-semibold text-muted mb-1">Tribunal</label>
-                            <select class="form-select form-select-sm" name="filter_tribunal">
-                                <option value="">Todos</option>
-                                {% for value in filter_values.tribunal %}
-                                <option value="{{ value }}" {% if filters.get('tribunal') == value %}selected{% endif %}>{{ value }}</option>
-                                {% endfor %}
-                            </select>
+                            <div class="multiselect-dropdown" data-field="natureza">
+                                <div class="multiselect-display">
+                                    <input type="text" class="multiselect-input" placeholder="Selecione..." readonly>
+                                    <i class="fas fa-chevron-down multiselect-arrow"></i>
+                                </div>
+                                <div class="multiselect-dropdown-menu">
+                                    <div class="multiselect-search">
+                                        <input type="text" class="form-control form-control-sm" placeholder="Buscar...">
+                                    </div>
+                                    <div class="multiselect-options">
+                                        {% set filter_natureza = filters.get('natureza', []) %}
+                                        {% for value in filter_values.natureza %}
+                                        <div class="multiselect-option" data-value="{{ value }}">
+                                            <input type="checkbox" id="natureza_{{ loop.index }}"
+                                                {% if filter_natureza %}
+                                                    {% if filter_natureza is string %}
+                                                        {% if filter_natureza|string == value|string %}checked{% endif %}
+                                                    {% else %}
+                                                        {% set is_selected = false %}
+                                                        {% for filter_val in filter_natureza %}
+                                                            {% if filter_val|string == value|string %}
+                                                                {% set is_selected = true %}
+                                                            {% endif %}
+                                                        {% endfor %}
+                                                        {% if is_selected %}checked{% endif %}
+                                                    {% endif %}
+                                                {% endif %}>
+                                            <label for="natureza_{{ loop.index }}">{{ value }}</label>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                                {% if filters.get('natureza', []) %}
+                                    {% for val in filters.get('natureza', []) %}
+                                        <input type="hidden" name="filter_natureza" value="{{ val }}">
+                                    {% endfor %}
+                                {% else %}
+                                    <input type="hidden" name="filter_natureza" value="">
+                                {% endif %}
+                            </div>
                         </div>
                         <div class="col-md-2">
                             <label class="form-label small fw-semibold text-muted mb-1">Situação</label>
-                            <select class="form-select form-select-sm" name="filter_situacao">
-                                <option value="">Todas</option>
-                                {% for value in filter_values.situacao %}
-                                <option value="{{ value }}" {% if filters.get('situacao') == value %}selected{% endif %}>{{ value }}</option>
-                                {% endfor %}
-                            </select>
+                            <div class="multiselect-dropdown" data-field="situacao">
+                                <div class="multiselect-display">
+                                    <input type="text" class="multiselect-input" placeholder="Selecione..." readonly>
+                                    <i class="fas fa-chevron-down multiselect-arrow"></i>
+                                </div>
+                                <div class="multiselect-dropdown-menu">
+                                    <div class="multiselect-search">
+                                        <input type="text" class="form-control form-control-sm" placeholder="Buscar...">
+                                    </div>
+                                    <div class="multiselect-options">
+                                        {% set filter_situacao = filters.get('situacao', []) %}
+                                        {% for value in filter_values.situacao %}
+                                        <div class="multiselect-option" data-value="{{ value }}">
+                                            <input type="checkbox" id="situacao_{{ loop.index }}"
+                                                {% if filter_situacao and filter_situacao|length > 0 %}
+                                                    {% if filter_situacao is string %}
+                                                        {% if filter_situacao|string == value|string %}checked{% endif %}
+                                                    {% elif filter_situacao is iterable %}
+                                                        {% set is_selected = false %}
+                                                        {% for filter_val in filter_situacao %}
+                                                            {% if filter_val|string == value|string %}
+                                                                {% set is_selected = true %}
+                                                            {% endif %}
+                                                        {% endfor %}
+                                                        {% if is_selected %}checked{% endif %}
+                                                    {% endif %}
+                                                {% endif %}>
+                                            <label for="situacao_{{ loop.index }}">{{ value }}</label>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                                {% if filters.get('situacao', []) %}
+                                    {% for val in filters.get('situacao', []) %}
+                                        <input type="hidden" name="filter_situacao" value="{{ val }}">
+                                    {% endfor %}
+                                {% else %}
+                                    <input type="hidden" name="filter_situacao" value="">
+                                {% endif %}
+                            </div>
                         </div>
                         <div class="col-md-2">
-                            <label class="form-label small fw-semibold text-muted mb-1">Ano</label>
-                            <select class="form-select form-select-sm" name="filter_ano_orc">
-                                <option value="">Todos</option>
-                                {% for value in filter_values.ano_orc %}
-                                <option value="{{ value }}" {% if filters.get('ano_orc') == value %}selected{% endif %}>{{ value }}</option>
-                                {% endfor %}
-                            </select>
+                            <label class="form-label small fw-semibold text-muted mb-1">Ano Orçamentário</label>
+                            <div class="multiselect-dropdown" data-field="ano_orc">
+                                <div class="multiselect-display">
+                                    <input type="text" class="multiselect-input" placeholder="Selecione..." readonly>
+                                    <i class="fas fa-chevron-down multiselect-arrow"></i>
+                                </div>
+                                <div class="multiselect-dropdown-menu">
+                                    <div class="multiselect-search">
+                                        <input type="text" class="form-control form-control-sm" placeholder="Buscar...">
+                                    </div>
+                                    <div class="multiselect-options">
+                                        {% set filter_ano_orc_list = filters.get('ano_orc', []) %}
+                                        {% for value in filter_values.ano_orc %}
+                                        <div class="multiselect-option" data-value="{{ value }}">
+                                            <input type="checkbox" id="ano_orc_{{ loop.index }}"
+                                                {% if filter_ano_orc_list and filter_ano_orc_list|length > 0 %}
+                                                    {% set is_selected = false %}
+                                                    {% for filter_val in filter_ano_orc_list %}
+                                                        {% if filter_val|string == value|string %}
+                                                            {% set is_selected = true %}
+                                                        {% endif %}
+                                                    {% endfor %}
+                                                    {% if is_selected %}checked{% endif %}
+                                                {% endif %}>
+                                            <label for="ano_orc_{{ loop.index }}">{{ value }}</label>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                                {% if filters.get('ano_orc', []) %}
+                                    {% for val in filters.get('ano_orc', []) %}
+                                        <input type="hidden" name="filter_ano_orc" value="{{ val }}">
+                                    {% endfor %}
+                                {% else %}
+                                    <input type="hidden" name="filter_ano_orc" value="">
+                                {% endif %}
+                            </div>
                         </div>
+                    </div>
+
+                    <!-- Terceira linha: Regime e filtros adicionais com ações -->
+                    <div class="row g-2 align-items-end">
                         <div class="col-md-2">
                             <label class="form-label small fw-semibold text-muted mb-1">Regime</label>
-                            <select class="form-select form-select-sm" name="filter_regime">
+                            <div class="multiselect-dropdown" data-field="regime">
+                                <div class="multiselect-display">
+                                    <input type="text" class="multiselect-input" placeholder="Selecione..." readonly>
+                                    <i class="fas fa-chevron-down multiselect-arrow"></i>
+                                </div>
+                                <div class="multiselect-dropdown-menu">
+                                    <div class="multiselect-search">
+                                        <input type="text" class="form-control form-control-sm" placeholder="Buscar...">
+                                    </div>
+                                    <div class="multiselect-options">
+                                        {% set filter_regime = filters.get('regime', []) %}
+                                        {% for value in filter_values.regime %}
+                                        <div class="multiselect-option" data-value="{{ value }}">
+                                            <input type="checkbox" id="regime_{{ loop.index }}"
+                                                {% if filter_regime and filter_regime|length > 0 %}
+                                                    {% if filter_regime is string %}
+                                                        {% if filter_regime|string == value|string %}checked{% endif %}
+                                                    {% elif filter_regime is iterable %}
+                                                        {% set is_selected = false %}
+                                                        {% for filter_val in filter_regime %}
+                                                            {% if filter_val|string == value|string %}
+                                                                {% set is_selected = true %}
+                                                            {% endif %}
+                                                        {% endfor %}
+                                                        {% if is_selected %}checked{% endif %}
+                                                    {% endif %}
+                                                {% endif %}>
+                                            <label for="regime_{{ loop.index }}">{{ value }}</label>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                                {% if filters.get('regime', []) %}
+                                    {% for val in filters.get('regime', []) %}
+                                        <input type="hidden" name="filter_regime" value="{{ val }}">
+                                    {% endfor %}
+                                {% else %}
+                                    <input type="hidden" name="filter_regime" value="">
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small fw-semibold text-muted mb-1">Está na Ordem</label>
+                            <select class="form-select form-select-sm" name="filter_esta_na_ordem">
                                 <option value="">Todos</option>
-                                {% for value in filter_values.regime %}
-                                <option value="{{ value }}" {% if filters.get('regime') == value %}selected{% endif %}>{{ value }}</option>
-                                {% endfor %}
+                                <option value="SIM" {% if filters.get('esta_na_ordem') == 'SIM' %}selected{% endif %}>SIM</option>
+                                <option value="NAO" {% if filters.get('esta_na_ordem') == 'NAO' %}selected{% endif %}>NÃO</option>
                             </select>
                         </div>
-                            </div>
-                            <div class="row g-3 mt-1">
-                                <div class="col-md-2">
-                                    <label class="form-label small fw-semibold text-muted mb-1">Valor Mínimo</label>
-                                    <input type="number" class="form-control form-control-sm"
-                                           name="filter_valor_min"
-                                           value="{{ filters.get('valor_min', '') }}"
-                                           placeholder="R$ 0,00"
-                                           min="0"
-                                           max="{{ max_valor or 0 }}"
-                                           step="0.01">
-                                </div>
-                                <div class="col-md-2">
-                                    <label class="form-label small fw-semibold text-muted mb-1">Valor Máximo</label>
-                                    <input type="number" class="form-control form-control-sm"
-                                           name="filter_valor_max"
-                                           value="{{ filters.get('valor_max', '') }}"
-                                           placeholder="R$ 0,00"
-                                           min="0"
-                                           max="{{ max_valor or 0 }}"
-                                           step="0.01">
-                                </div>
-                                <div class="col-md-2">
-                                    <label class="form-label small fw-semibold text-muted mb-1">No Pipe</label>
-                                    <select class="form-select form-select-sm" name="filter_presenca_no_pipe">
-                                        <option value="">Todos</option>
-                                        <option value="true" {% if filters.get('presenca_no_pipe') == 'true' %}selected{% endif %}>Sim</option>
-                                        <option value="false" {% if filters.get('presenca_no_pipe') == 'false' %}selected{% endif %}>Não</option>
-                                    </select>
-                                </div>
-                                <div class="col-md-2">
-                                    <label class="form-label small fw-semibold text-muted mb-1">Na Ordem</label>
-                                    <select class="form-select form-select-sm" name="filter_esta_na_ordem">
-                                        <option value="">Todos</option>
-                                        <option value="true" {% if filters.get('esta_na_ordem') == 'true' %}selected{% endif %}>Sim</option>
-                                        <option value="false" {% if filters.get('esta_na_ordem') == 'false' %}selected{% endif %}>Não</option>
-                                    </select>
-                                </div>
-                                <div class="col-md-5 d-flex align-items-end gap-2">
-                                    <button type="submit" class="btn precs-btn-gold px-4">
-                                        <i class="fas fa-search me-2"></i>Filtrar
-                                    </button>
-                                    <a href="{{ url_for('index') }}" class="btn btn-outline-secondary px-4">
-                                        <i class="fas fa-times me-2"></i>Limpar
-                                    </a>
-                                </div>
-                            </div>
-                        </form>
+                        <div class="col-md-2">
+                            <label class="form-label small fw-semibold text-muted mb-1">Presença no Pipe</label>
+                            <select class="form-select form-select-sm" name="filter_presenca_no_pipe">
+                                <option value="">Todas</option>
+                                <option value="SIM" {% if filters.get('presenca_no_pipe') == 'SIM' %}selected{% endif %}>SIM</option>
+                                <option value="NAO" {% if filters.get('presenca_no_pipe') == 'NAO' %}selected{% endif %}>NÃO</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6"></div>
+                        <div class="col-md-1">
+                            <button type="submit" class="btn precs-btn-gold btn-sm w-100">
+                                Filtrar
+                            </button>
+                        </div>
+                        <div class="col-md-1">
+                            <a href="{{ url_for('index') }}" class="btn btn-outline-secondary btn-sm w-100">
+                                Limpar
+                            </a>
+                        </div>
+                    </div>
+                    </form>
                     </div>
                 </div>
             </div>
@@ -267,6 +470,10 @@
                         <span>Dados dos Precatórios</span>
                     </div>
                     <div class="table-header-right">
+                        <button type="button" class="btn btn-sm btn-nav-action me-2" onclick="exportToCSV()" id="exportCSVBtn">
+                            <i class="fas fa-download me-1"></i>
+                            Exportar CSV
+                        </button>
                         <span class="modifications-badge" id="modifiedCount">
                             <i class="fas fa-edit me-2"></i>
                             <span>0 alterações</span>
@@ -351,6 +558,26 @@
                                                     {% if field.name == 'pec66_resultado_arredondado' %}
                                                         {% if precatorio[field.name] is not none %}
                                                             <span class="badge bg-warning text-dark">{{ precatorio[field.name] }}</span>
+                                                        {% else %}
+                                                            <span class="text-muted">-</span>
+                                                        {% endif %}
+                                                    {% elif field.name == 'caprec' %}
+                                                        {% if precatorio[field.name] is not none %}
+                                                            <span class="badge 
+                                                                {% if precatorio[field.name] == 'A+' %}bg-success
+                                                                {% elif precatorio[field.name] == 'A' %}bg-success
+                                                                {% elif precatorio[field.name] == 'B+' %}bg-info
+                                                                {% elif precatorio[field.name] == 'B' %}bg-info
+                                                                {% elif precatorio[field.name] == 'C+' %}bg-primary
+                                                                {% elif precatorio[field.name] == 'C' %}bg-primary
+                                                                {% elif precatorio[field.name] == 'D+' %}bg-warning
+                                                                {% elif precatorio[field.name] == 'D' %}bg-warning
+                                                                {% elif precatorio[field.name] == 'E+' %}bg-danger
+                                                                {% elif precatorio[field.name] == 'E' %}bg-danger
+                                                                {% elif precatorio[field.name] == 'F' %}bg-dark
+                                                                {% else %}bg-secondary{% endif %} text-white">
+                                                                {{ precatorio[field.name] }}
+                                                            </span>
                                                         {% else %}
                                                             <span class="text-muted">-</span>
                                                         {% endif %}
@@ -529,6 +756,7 @@
             <span class="visually-hidden">Carregando...</span>
         </div>
     </div>
+
 
     <!-- Rodapé -->
     <footer class="footer mt-5">

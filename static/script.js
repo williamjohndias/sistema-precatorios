@@ -16,6 +16,126 @@ document.addEventListener('DOMContentLoaded', function() {
     setupDatalistClickable();
     reconfigureSearchableSelect = setupSearchableSelect();
     
+    // Configurar multiselect dropdowns
+    setupMultiSelectDropdowns();
+    
+    // Função para sincronizar checkboxes com hidden inputs do servidor
+    function syncCheckboxesFromHiddenInputs() {
+        console.log('[syncCheckboxesFromHiddenInputs] Iniciando sincronização...');
+        const multiselectDropdowns = document.querySelectorAll('.multiselect-dropdown');
+        console.log(`[syncCheckboxesFromHiddenInputs] Encontrados ${multiselectDropdowns.length} dropdowns`);
+        
+        multiselectDropdowns.forEach(dropdown => {
+            const fieldName = dropdown.dataset.field;
+            if (!fieldName) {
+                console.log('[syncCheckboxesFromHiddenInputs] Dropdown sem fieldName, pulando...');
+                return;
+            }
+            
+            // Procurar hidden inputs em todo o documento (não apenas no dropdown)
+            const allHiddenInputs = document.querySelectorAll(`input[type="hidden"][name="filter_${fieldName}"]`);
+            console.log(`[syncCheckboxesFromHiddenInputs] Campo: ${fieldName}, ${allHiddenInputs.length} hidden inputs encontrados`);
+            
+            const serverValues = [];
+            
+            // Coletar valores dos hidden inputs (que vêm do servidor)
+            allHiddenInputs.forEach((input, index) => {
+                const val = input.value ? input.value.trim() : '';
+                console.log(`[syncCheckboxesFromHiddenInputs] Hidden input ${index} para ${fieldName}: "${val}"`);
+                if (val) {
+                    serverValues.push(val);
+                }
+            });
+            
+            console.log(`[syncCheckboxesFromHiddenInputs] Campo: ${fieldName}, Valores coletados:`, serverValues);
+            
+            // Se há valores nos hidden inputs, marcar os checkboxes correspondentes
+            if (serverValues.length > 0) {
+                const options = dropdown.querySelectorAll('.multiselect-option');
+                console.log(`[syncCheckboxesFromHiddenInputs] Campo: ${fieldName}, ${options.length} opções encontradas`);
+                let checkedCount = 0;
+                options.forEach((option, optIndex) => {
+                    const checkbox = option.querySelector('input[type="checkbox"]');
+                    const value = option.dataset.value;
+                    if (checkbox && value) {
+                        // Marcar checkbox se o valor estiver na lista de valores do servidor
+                        if (serverValues.includes(value)) {
+                            checkbox.checked = true;
+                            checkbox.setAttribute('checked', 'checked');
+                            checkedCount++;
+                            console.log(`[syncCheckboxesFromHiddenInputs] Checkbox ${optIndex} marcado: ${value}`);
+                        } else {
+                            // Desmarcar se não estiver na lista
+                            checkbox.checked = false;
+                            checkbox.removeAttribute('checked');
+                        }
+                    }
+                });
+                console.log(`[syncCheckboxesFromHiddenInputs] Campo: ${fieldName}, ${checkedCount} checkboxes marcados de ${serverValues.length} valores esperados`);
+            } else {
+                console.log(`[syncCheckboxesFromHiddenInputs] Campo: ${fieldName}, Nenhum valor encontrado nos hidden inputs`);
+            }
+        });
+    }
+    
+    // Função para forçar atualização de todos os multiselects
+    function forceUpdateAllMultiSelects() {
+        console.log('[forceUpdateAllMultiSelects] Iniciando atualização de multiselects...');
+        
+        // Primeiro, sincronizar checkboxes com valores do servidor (IMPORTANTE: fazer isso PRIMEIRO)
+        syncCheckboxesFromHiddenInputs();
+        
+        // Pequeno delay para garantir que os checkboxes foram marcados
+        setTimeout(() => {
+            // Depois, atualizar display e hidden inputs baseado nos checkboxes
+            const multiselectDropdowns = document.querySelectorAll('.multiselect-dropdown');
+            multiselectDropdowns.forEach(dropdown => {
+                const fieldName = dropdown.dataset.field;
+                console.log(`[forceUpdateAllMultiSelects] Atualizando display para: ${fieldName}`);
+                updateMultiSelectDisplay(dropdown);
+                // NÃO atualizar hidden inputs aqui, pois já temos os valores corretos do servidor
+                // updateMultiSelectHidden(dropdown);
+            });
+            console.log('[forceUpdateAllMultiSelects] Atualização concluída');
+        }, 50);
+    }
+    
+    // Garantir que o display está atualizado após a página estar completamente carregada
+    // Usar múltiplos timeouts para garantir que os valores sejam atualizados
+    setTimeout(forceUpdateAllMultiSelects, 100);
+    
+    // Segunda atualização após um delay maior (caso a primeira não tenha capturado todos os valores)
+    setTimeout(forceUpdateAllMultiSelects, 500);
+    
+    // Terceira atualização após window.load (quando tudo está carregado)
+    window.addEventListener('load', () => {
+        setTimeout(forceUpdateAllMultiSelects, 100);
+    });
+    
+    // Configurar envio do formulário para incluir valores dos multiselect
+    const filterForm = document.getElementById('filterForm');
+    if (filterForm) {
+        filterForm.addEventListener('submit', function(e) {
+            // Garantir que todos os multiselects estão atualizados antes de submeter
+            const multiselectDropdowns = document.querySelectorAll('.multiselect-dropdown');
+            multiselectDropdowns.forEach(dropdown => {
+                // Atualizar hidden inputs baseado nos checkboxes marcados
+                updateMultiSelectHidden(dropdown);
+            });
+            
+            // Log para debug (pode remover depois)
+            console.log('Formulário sendo enviado. Valores dos filtros:');
+            multiselectDropdowns.forEach(dropdown => {
+                const fieldName = dropdown.dataset.field;
+                const allHiddenInputs = dropdown.querySelectorAll(`input[type="hidden"][name="filter_${fieldName}"]`);
+                const values = Array.from(allHiddenInputs).map(input => input.value).filter(v => v);
+                if (values.length > 0) {
+                    console.log(`  ${fieldName}:`, values);
+                }
+            });
+        });
+    }
+    
     // Configurar atualização dinâmica dos filtros
     setupDynamicFilters();
     
@@ -989,6 +1109,488 @@ function loadDropdownOptions(fields) {
     loadNext();
 }
 
+// Configurar multiselect dropdowns customizados
+function setupMultiSelectDropdowns() {
+    const multiselects = document.querySelectorAll('.multiselect-dropdown');
+    
+    multiselects.forEach(dropdown => {
+        const display = dropdown.querySelector('.multiselect-display');
+        const input = dropdown.querySelector('.multiselect-input');
+        const menu = dropdown.querySelector('.multiselect-dropdown-menu');
+        const searchInput = dropdown.querySelector('.multiselect-search input');
+        const options = dropdown.querySelectorAll('.multiselect-option');
+        const hiddenInput = dropdown.querySelector('input[type="hidden"]');
+        const fieldName = dropdown.dataset.field;
+        
+        // NÃO atualizar hidden inputs aqui, pois isso remove os valores do servidor
+        // Apenas atualizar o display depois que os checkboxes forem sincronizados
+        // updateMultiSelectDisplay(dropdown);
+        // updateMultiSelectHidden(dropdown);
+        
+        // Abrir/fechar dropdown
+        display.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const isActive = dropdown.classList.contains('active');
+            
+            // Fechar outros dropdowns
+            document.querySelectorAll('.multiselect-dropdown.active').forEach(d => {
+                if (d !== dropdown) {
+                    d.classList.remove('active');
+                    const menu = d.querySelector('.multiselect-dropdown-menu');
+                    if (menu) {
+                        menu.style.top = '';
+                        menu.style.bottom = '';
+                        menu.style.marginTop = '';
+                        menu.style.marginBottom = '';
+                    }
+                }
+            });
+            
+            // Toggle deste dropdown
+            if (!isActive) {
+                dropdown.classList.add('active');
+                
+                // Calcular posição para evitar sobreposição com a tabela
+                const menu = dropdown.querySelector('.multiselect-dropdown-menu');
+                if (menu) {
+                    const rect = display.getBoundingClientRect();
+                    const filtersSection = dropdown.closest('.filters-section');
+                    const tableSection = document.querySelector('.table-section');
+                    
+                    // Calcular espaço disponível abaixo do input
+                    let spaceBelow = 0;
+                    if (tableSection) {
+                        const tableRect = tableSection.getBoundingClientRect();
+                        spaceBelow = tableRect.top - rect.bottom - 20; // 20px de margem
+                    } else {
+                        spaceBelow = window.innerHeight - rect.bottom - 20;
+                    }
+                    
+                    // Altura máxima do menu (considerando scroll e espaço disponível)
+                    // Limitar para não ultrapassar a área de filtros
+                    const maxMenuHeight = Math.max(150, Math.min(300, spaceBelow - 10));
+                    
+                    // Ajustar altura das opções também
+                    const optionsContainer = menu.querySelector('.multiselect-options');
+                    if (optionsContainer) {
+                        // Altura do container de busca + margens + altura das opções
+                        const searchHeight = menu.querySelector('.multiselect-search')?.offsetHeight || 50;
+                        const optionsMaxHeight = maxMenuHeight - searchHeight - 20; // 20px de margem/padding
+                        optionsContainer.style.maxHeight = Math.max(100, optionsMaxHeight) + 'px';
+                    }
+                    
+                    if (maxMenuHeight > 100 && spaceBelow > 150) {
+                        // Há espaço suficiente abaixo - usar position: absolute
+                        menu.style.position = 'absolute';
+                        menu.style.top = '100%';
+                        menu.style.left = '0';
+                        menu.style.right = '0';
+                        menu.style.maxHeight = maxMenuHeight + 'px';
+                        menu.style.marginTop = '0.25rem';
+                        menu.style.marginBottom = '0';
+                    } else {
+                        // Pouco espaço abaixo - abrir para cima
+                        const spaceAbove = rect.top - (filtersSection ? filtersSection.getBoundingClientRect().top : 0);
+                        if (spaceAbove > 150) {
+                            menu.style.position = 'absolute';
+                            menu.style.bottom = '100%';
+                            menu.style.top = 'auto';
+                            menu.style.left = '0';
+                            menu.style.right = '0';
+                            menu.style.maxHeight = Math.min(300, spaceAbove - 10) + 'px';
+                            menu.style.marginBottom = '0.25rem';
+                            menu.style.marginTop = '0';
+                        } else {
+                            // Mesmo assim abrir para baixo, mas com altura limitada
+                            menu.style.position = 'absolute';
+                            menu.style.top = '100%';
+                            menu.style.left = '0';
+                            menu.style.right = '0';
+                            menu.style.maxHeight = Math.max(150, spaceBelow - 10) + 'px';
+                            menu.style.marginTop = '0.25rem';
+                            menu.style.marginBottom = '0';
+                        }
+                    }
+                }
+                
+                // Focar no campo de busca quando abrir
+                if (searchInput) {
+                    setTimeout(() => searchInput.focus(), 100);
+                }
+            } else {
+                dropdown.classList.remove('active');
+                const menu = dropdown.querySelector('.multiselect-dropdown-menu');
+                if (menu) {
+                    menu.style.position = '';
+                    menu.style.top = '';
+                    menu.style.bottom = '';
+                    menu.style.left = '';
+                    menu.style.right = '';
+                    menu.style.maxHeight = '';
+                    menu.style.marginBottom = '';
+                    menu.style.marginTop = '';
+                }
+            }
+        });
+        
+        // Busca dentro do dropdown
+        if (searchInput) {
+            searchInput.addEventListener('input', function() {
+                const searchTerm = this.value.toLowerCase().trim();
+                options.forEach(option => {
+                    const label = option.querySelector('label');
+                    const text = label ? label.textContent.toLowerCase() : '';
+                    if (text.includes(searchTerm)) {
+                        option.classList.remove('hidden');
+                    } else {
+                        option.classList.add('hidden');
+                    }
+                });
+            });
+        }
+        
+        // Seleção de checkboxes
+        options.forEach(option => {
+            const checkbox = option.querySelector('input[type="checkbox"]');
+            
+            if (checkbox) {
+                // Clique no checkbox ou label
+                option.addEventListener('click', function(e) {
+                    if (e.target.type !== 'text') {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        
+                        // Toggle do checkbox
+                        const wasChecked = checkbox.checked;
+                        checkbox.checked = !wasChecked;
+                        
+                        // Atualizar atributo checked para garantir consistência
+                        if (checkbox.checked) {
+                            checkbox.setAttribute('checked', 'checked');
+                        } else {
+                            checkbox.removeAttribute('checked');
+                        }
+                        
+                        console.log(`[Checkbox Click] Campo: ${fieldName}, Valor: ${option.dataset.value}, Marcado: ${checkbox.checked}`);
+                        
+                        // Atualizar display e hidden inputs
+                        updateMultiSelectDisplay(dropdown);
+                        updateMultiSelectHidden(dropdown);
+                        
+                        // NÃO disparar evento de mudança imediatamente ao clicar em checkbox
+                        // Isso evita que os filtros dinâmicos sejam ativados enquanto o usuário está selecionando
+                        // Os filtros dinâmicos serão atualizados quando o usuário clicar em "Filtrar" ou quando outros filtros mudarem
+                        // const changeEvent = new Event('change', { bubbles: true });
+                        // const allHiddenInputs = dropdown.querySelectorAll(`input[type="hidden"][name="filter_${fieldName}"]`);
+                        // if (allHiddenInputs.length > 0) {
+                        //     allHiddenInputs[0].dispatchEvent(changeEvent);
+                        // }
+                    }
+                });
+            }
+        });
+    });
+    
+    // Fechar dropdowns ao clicar fora
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.multiselect-dropdown')) {
+            document.querySelectorAll('.multiselect-dropdown.active').forEach(dropdown => {
+                dropdown.classList.remove('active');
+                const menu = dropdown.querySelector('.multiselect-dropdown-menu');
+                if (menu) {
+                    menu.style.top = '';
+                    menu.style.bottom = '';
+                    menu.style.marginTop = '';
+                    menu.style.marginBottom = '';
+                }
+            });
+        }
+    });
+    
+    // Fechar dropdowns ao pressionar ESC
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            document.querySelectorAll('.multiselect-dropdown.active').forEach(dropdown => {
+                dropdown.classList.remove('active');
+                const menu = dropdown.querySelector('.multiselect-dropdown-menu');
+                if (menu) {
+                    menu.style.top = '';
+                    menu.style.bottom = '';
+                    menu.style.marginTop = '';
+                    menu.style.marginBottom = '';
+                }
+            });
+        }
+    });
+}
+
+// Atualizar display do multiselect (mostrar texto ou placeholder)
+function updateMultiSelectDisplay(dropdown) {
+    const input = dropdown.querySelector('.multiselect-input');
+    if (!input) return;
+    
+    const fieldName = dropdown.dataset.field;
+    
+    // Primeiro, tentar pegar valores dos hidden inputs (mais confiável)
+    const allHiddenInputs = document.querySelectorAll(`input[type="hidden"][name="filter_${fieldName}"]`);
+    const hiddenValues = [];
+    allHiddenInputs.forEach(hiddenInput => {
+        const val = hiddenInput.value ? hiddenInput.value.trim() : '';
+        if (val) {
+            hiddenValues.push(val);
+        }
+    });
+    
+    // Se não encontrou valores nos hidden inputs, verificar checkboxes
+    let selectedValues = [];
+    if (hiddenValues.length > 0) {
+        // Usar valores dos hidden inputs e encontrar os textos correspondentes
+        const allOptions = dropdown.querySelectorAll('.multiselect-option');
+        allOptions.forEach(option => {
+            const value = option.dataset.value;
+            const label = option.querySelector('label');
+            if (value && label && hiddenValues.includes(value)) {
+                const text = label.textContent.trim();
+                if (text) {
+                    selectedValues.push(text);
+                }
+            }
+        });
+    } else {
+        // Fallback: verificar checkboxes diretamente
+        const allOptions = dropdown.querySelectorAll('.multiselect-option');
+        allOptions.forEach(option => {
+            const checkbox = option.querySelector('input[type="checkbox"]');
+            const label = option.querySelector('label');
+            
+            if (!checkbox || !label) return;
+            
+            // Verificar de múltiplas formas para garantir que detectamos checkboxes marcados
+            const isChecked = checkbox.checked || 
+                             checkbox.getAttribute('checked') !== null ||
+                             checkbox.hasAttribute('checked') ||
+                             checkbox.defaultChecked;
+            
+            if (isChecked) {
+                const text = label.textContent.trim();
+                if (text) {
+                    selectedValues.push(text);
+                }
+            }
+        });
+    }
+    
+    if (selectedValues.length > 0) {
+        if (selectedValues.length <= 3) {
+            // Mostrar até 3 valores completos
+            input.value = selectedValues.join(', ');
+        } else {
+            // Mostrar quantidade se mais de 3
+            input.value = `${selectedValues.length} selecionado(s)`;
+        }
+        input.style.color = '#D4AF37';
+        input.classList.add('has-selection');
+        console.log(`[updateMultiSelectDisplay] ${fieldName}: ${selectedValues.join(', ')}`);
+    } else {
+        input.value = '';
+        input.placeholder = 'Selecione...';
+        input.style.color = '#ffffff';
+        input.classList.remove('has-selection');
+    }
+}
+
+// Atualizar input hidden com valores selecionados
+function updateMultiSelectHidden(dropdown) {
+    const fieldName = dropdown.dataset.field;
+    if (!fieldName) {
+        console.log('[updateMultiSelectHidden] Dropdown sem fieldName, abortando');
+        return;
+    }
+    
+    // Coletar TODAS as opções, incluindo as ocultas (para não perder valores quando há busca ativa)
+    const options = dropdown.querySelectorAll('.multiselect-option');
+    const selectedValues = [];
+    
+    console.log(`[updateMultiSelectHidden] Campo: ${fieldName}, Verificando ${options.length} opções`);
+    
+    // Coletar valores dos checkboxes marcados
+    options.forEach((option, index) => {
+        const checkbox = option.querySelector('input[type="checkbox"]');
+        const value = option.dataset.value;
+        
+        if (!checkbox || !value) {
+            console.log(`[updateMultiSelectHidden] Opção ${index} sem checkbox ou valor, pulando`);
+            return;
+        }
+        
+        // Verificar se o checkbox está marcado (de múltiplas formas para garantir)
+        const isChecked = checkbox.checked || 
+                         checkbox.getAttribute('checked') === 'checked' ||
+                         checkbox.hasAttribute('checked');
+        
+        if (isChecked) {
+            selectedValues.push(value);
+            console.log(`[updateMultiSelectHidden] Checkbox ${index} marcado: ${value}`);
+        }
+    });
+    
+    console.log(`[updateMultiSelectHidden] Campo: ${fieldName}, ${selectedValues.length} valores coletados:`, selectedValues);
+    
+    // Remover todos os inputs hidden existentes para este campo (incluindo os que estão fora do dropdown)
+    const allHiddenInputs = document.querySelectorAll(`input[type="hidden"][name="filter_${fieldName}"]`);
+    console.log(`[updateMultiSelectHidden] Removendo ${allHiddenInputs.length} hidden inputs existentes`);
+    allHiddenInputs.forEach(input => input.remove());
+    
+    // Se não há valores selecionados, criar um input vazio
+    if (selectedValues.length === 0) {
+        const filterForm = document.getElementById('filterForm');
+        const parentElement = filterForm || dropdown;
+        const emptyInput = document.createElement('input');
+        emptyInput.type = 'hidden';
+        emptyInput.name = `filter_${fieldName}`;
+        emptyInput.value = '';
+        parentElement.appendChild(emptyInput);
+        console.log(`[updateMultiSelectHidden] Campo: ${fieldName}, Nenhum valor selecionado, criando input vazio`);
+        return;
+    }
+    
+    // Criar múltiplos inputs hidden com o mesmo nome (para getlist() funcionar no Flask)
+    // IMPORTANTE: Colocar os hidden inputs dentro do formulário, não apenas no dropdown
+    const filterForm = document.getElementById('filterForm');
+    const parentElement = filterForm || dropdown;
+    
+    selectedValues.forEach((value, index) => {
+        const newInput = document.createElement('input');
+        newInput.type = 'hidden';
+        newInput.name = `filter_${fieldName}`;
+        newInput.value = value;
+        parentElement.appendChild(newInput);
+        console.log(`[updateMultiSelectHidden] Campo: ${fieldName}, Criado hidden input ${index + 1}/${selectedValues.length}: ${value} no ${filterForm ? 'formulário' : 'dropdown'}`);
+    });
+    
+    console.log(`[updateMultiSelectHidden] Campo: ${fieldName}, Total de ${selectedValues.length} hidden inputs criados`);
+    
+    // Verificar se os inputs foram criados corretamente
+    const verifyInputs = document.querySelectorAll(`input[type="hidden"][name="filter_${fieldName}"]`);
+    const verifyValues = Array.from(verifyInputs).map(input => input.value).filter(v => v);
+    console.log(`[updateMultiSelectHidden] Verificação: ${verifyInputs.length} hidden inputs encontrados com valores:`, verifyValues);
+}
+
+// Atualizar opções do multiselect (para filtros dinâmicos)
+function updateMultiSelectOptions(fieldName, values) {
+    const dropdown = document.querySelector(`.multiselect-dropdown[data-field="${fieldName}"]`);
+    if (!dropdown) {
+        console.log(`[updateMultiSelectOptions] Dropdown não encontrado para ${fieldName}`);
+        return;
+    }
+    
+    const optionsContainer = dropdown.querySelector('.multiselect-options');
+    if (!optionsContainer) {
+        console.log(`[updateMultiSelectOptions] Container de opções não encontrado para ${fieldName}`);
+        return;
+    }
+    
+    // Coletar TODOS os valores atualmente selecionados (de TODOS os hidden inputs)
+    const allHiddenInputs = document.querySelectorAll(`input[type="hidden"][name="filter_${fieldName}"]`);
+    const currentValues = [];
+    allHiddenInputs.forEach(input => {
+        const val = input.value ? input.value.trim() : '';
+        if (val) {
+            currentValues.push(val);
+        }
+    });
+    
+    console.log(`[updateMultiSelectOptions] Campo: ${fieldName}, ${values.length} novas opções, ${currentValues.length} valores atualmente selecionados:`, currentValues);
+    
+    // Limpar opções existentes
+    optionsContainer.innerHTML = '';
+    
+    // Adicionar novas opções
+    values.forEach((value, index) => {
+        const option = document.createElement('div');
+        option.className = 'multiselect-option';
+        option.dataset.value = value;
+        
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.id = `${fieldName}_${index}_${value.replace(/\s+/g, '_')}`;
+        
+        // Marcar checkbox se o valor estiver na lista de valores selecionados
+        const isSelected = currentValues.includes(value);
+        checkbox.checked = isSelected;
+        if (isSelected) {
+            checkbox.setAttribute('checked', 'checked');
+            console.log(`[updateMultiSelectOptions] Campo: ${fieldName}, Checkbox marcado para: ${value}`);
+        }
+        
+        const label = document.createElement('label');
+        label.htmlFor = checkbox.id;
+        label.textContent = value;
+        
+        option.appendChild(checkbox);
+        option.appendChild(label);
+        optionsContainer.appendChild(option);
+        
+        // Adicionar evento de clique
+        option.addEventListener('click', function(e) {
+            if (e.target.type !== 'text') {
+                e.stopPropagation();
+                e.preventDefault();
+                
+                // Toggle do checkbox
+                const wasChecked = checkbox.checked;
+                checkbox.checked = !wasChecked;
+                
+                // Atualizar atributo checked
+                if (checkbox.checked) {
+                    checkbox.setAttribute('checked', 'checked');
+                } else {
+                    checkbox.removeAttribute('checked');
+                }
+                
+                console.log(`[updateMultiSelectOptions] Checkbox clicado: ${value}, Marcado: ${checkbox.checked}`);
+                
+                // Atualizar display e hidden inputs
+                updateMultiSelectDisplay(dropdown);
+                updateMultiSelectHidden(dropdown);
+                
+                // NÃO disparar evento de mudança imediatamente para evitar atualização prematura
+                // if (hiddenInput) {
+                //     const changeEvent = new Event('change', { bubbles: true });
+                //     hiddenInput.dispatchEvent(changeEvent);
+                // }
+            }
+        });
+    });
+    
+    console.log(`[updateMultiSelectOptions] Campo: ${fieldName}, ${values.length} opções criadas, ${currentValues.filter(v => values.includes(v)).length} valores preservados`);
+    
+    // Reconfigurar busca
+    const searchInput = dropdown.querySelector('.multiselect-search input');
+    if (searchInput) {
+        // Remover listeners antigos
+        const newSearchInput = searchInput.cloneNode(true);
+        searchInput.parentNode.replaceChild(newSearchInput, searchInput);
+        
+        newSearchInput.addEventListener('input', function() {
+            const searchTerm = this.value.toLowerCase().trim();
+            const allOptions = optionsContainer.querySelectorAll('.multiselect-option');
+            allOptions.forEach(option => {
+                const label = option.querySelector('label');
+                const text = label ? label.textContent.toLowerCase() : '';
+                if (text.includes(searchTerm)) {
+                    option.classList.remove('hidden');
+                } else {
+                    option.classList.add('hidden');
+                }
+            });
+        });
+    }
+    
+    updateMultiSelectDisplay(dropdown);
+    updateMultiSelectHidden(dropdown);
+}
+
 // Configurar filtros dinâmicos: organização mostra TODAS, outros filtros são dinâmicos baseados em TODOS os filtros ativos
 function setupDynamicFilters() {
     const organizacaoInput = document.getElementById('filter_organizacao_hidden');
@@ -999,19 +1601,54 @@ function setupDynamicFilters() {
     function getAllActiveFilters() {
         const active = {};
         
+        // Campos que suportam múltipla seleção
+        const multiSelectFields = ['prioridade', 'tribunal', 'natureza', 'situacao', 'ano_orc', 'regime'];
+        
         // Capturar todos os inputs e selects de filtro
         allFilterInputs.forEach(input => {
             const fieldName = input.name.replace('filter_', '');
             let value = '';
             
-            if (input.type === 'hidden' || input.type === 'text' || input.type === 'number') {
+            if (input.type === 'hidden') {
+                // Para multiselect dropdowns, o valor está no hidden input separado por vírgula
+                value = input.value ? input.value.trim() : '';
+            } else if (input.type === 'text' || input.type === 'number') {
                 value = input.value ? input.value.trim() : '';
             } else if (input.tagName === 'SELECT') {
-                value = input.value ? input.value.trim() : '';
+                // Se for select múltiplo, pegar todos os valores selecionados
+                if (input.multiple) {
+                    const selectedOptions = Array.from(input.selectedOptions).map(opt => opt.value);
+                    value = selectedOptions.filter(v => v && v.trim()).join(',');
+                } else {
+                    value = input.value ? input.value.trim() : '';
+                }
             }
             
             if (value) {
+                // Para campos de múltipla seleção, manter como string separada por vírgula para compatibilidade
+                // O backend irá processar corretamente via getlist
                 active[fieldName] = value;
+            }
+        });
+        
+        // Capturar valores dos multiselect dropdowns customizados
+        multiSelectFields.forEach(field => {
+            const dropdown = document.querySelector(`.multiselect-dropdown[data-field="${field}"]`);
+            if (dropdown) {
+                // Coletar TODOS os inputs hidden com o mesmo nome (em todo o documento, não apenas no dropdown)
+                const hiddenInputs = document.querySelectorAll(`input[type="hidden"][name="filter_${field}"]`);
+                const values = [];
+                hiddenInputs.forEach(input => {
+                    const val = input.value ? input.value.trim() : '';
+                    if (val) {
+                        values.push(val);
+                    }
+                });
+                if (values.length > 0) {
+                    // Manter como array para facilitar o processamento e garantir que todos os valores sejam preservados
+                    active[field] = values;
+                    console.log(`[getAllActiveFilters] Campo ${field}: ${values.length} valores coletados:`, values);
+                }
             }
         });
         
@@ -1031,9 +1668,29 @@ function setupDynamicFilters() {
     
     // Função para atualizar um filtro específico baseado em TODOS os filtros ativos
     function updateFilter(fieldName, skipField = null, forceUpdate = false) {
-        if (fieldName === skipField) return;
+        if (fieldName === skipField) {
+            console.log(`[updateFilter] Pulando ${fieldName} (é o campo que mudou)`);
+            return;
+        }
         
         const activeFilters = getAllActiveFilters();
+        console.log(`[updateFilter] Atualizando ${fieldName} com ${Object.keys(activeFilters).length} filtros ativos`);
+        
+        // Verificar se é um multiselect dropdown customizado
+        const dropdown = document.querySelector(`.multiselect-dropdown[data-field="${fieldName}"]`);
+        if (dropdown) {
+            // IMPORTANTE: Só atualizar se realmente houver outros filtros ativos (não o próprio campo)
+            // Se não há outros filtros, não atualizar para não perder valores selecionados
+            const hasOtherFilters = Object.keys(activeFilters).some(key => key !== fieldName && activeFilters[key]);
+            if (hasOtherFilters || forceUpdate) {
+                console.log(`[updateFilter] Atualizando multiselect ${fieldName} (há outros filtros ativos ou é atualização forçada)`);
+                updateMultiSelectFilter(dropdown, fieldName, activeFilters, skipField, forceUpdate);
+            } else {
+                console.log(`[updateFilter] NÃO atualizando multiselect ${fieldName} (não há outros filtros ativos e não é atualização forçada - preservando valores selecionados)`);
+            }
+            return;
+        }
+        
         const select = document.querySelector(`select[name="filter_${fieldName}"]`);
         
         if (!select) {
@@ -1128,12 +1785,113 @@ function setupDynamicFilters() {
             });
     }
     
+    // Função para atualizar multiselect dropdown via filtros dinâmicos
+    function updateMultiSelectFilter(dropdown, fieldName, activeFilters, skipField, forceUpdate) {
+        if (fieldName === skipField) return;
+        
+        // Se não há filtros ativos e não é uma atualização forçada, não fazer nada
+        if (Object.keys(activeFilters).length === 0 && !forceUpdate) {
+            console.log(`[updateMultiSelectFilter] Campo: ${fieldName}, Sem filtros ativos e não é atualização forçada, abortando`);
+            return;
+        }
+        
+        // Coletar TODOS os valores atualmente selecionados (de TODOS os hidden inputs)
+        const allHiddenInputs = document.querySelectorAll(`input[type="hidden"][name="filter_${fieldName}"]`);
+        const currentValues = [];
+        allHiddenInputs.forEach(input => {
+            const val = input.value ? input.value.trim() : '';
+            if (val) {
+                currentValues.push(val);
+            }
+        });
+        
+        console.log(`[updateMultiSelectFilter] Campo: ${fieldName}, Valores atualmente selecionados:`, currentValues);
+        
+        // Construir URL com TODOS os filtros ativos (exceto o próprio campo)
+        let url = `/api/get_filter_options?field=${fieldName}`;
+        Object.keys(activeFilters).forEach(key => {
+            if (key !== fieldName) {
+                // Para campos multi-select, enviar todos os valores separados por vírgula
+                const filterValue = activeFilters[key];
+                if (Array.isArray(filterValue)) {
+                    url += `&active_filter_${key}=${encodeURIComponent(filterValue.join(','))}`;
+                } else {
+                    url += `&active_filter_${key}=${encodeURIComponent(filterValue)}`;
+                }
+            }
+        });
+        
+        console.log(`[updateMultiSelectFilter] Campo: ${fieldName}, Buscando opções com URL: ${url}`);
+        
+        fetch(url)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success && data.values && data.values.length > 0) {
+                    console.log(`[updateMultiSelectFilter] Campo: ${fieldName}, ${data.values.length} novas opções recebidas`);
+                    console.log(`[updateMultiSelectFilter] Campo: ${fieldName}, Valores a preservar:`, currentValues);
+                    
+                    // PRESERVAR valores selecionados antes de atualizar opções
+                    const valuesToPreserve = [...currentValues];
+                    
+                    // Atualizar opções do multiselect (isso recria os checkboxes)
+                    updateMultiSelectOptions(fieldName, data.values);
+                    
+                    // Aguardar um pouco para garantir que as opções foram criadas
+                    setTimeout(() => {
+                        // Restaurar TODOS os valores selecionados que ainda existem nas novas opções
+                        const optionsContainer = dropdown.querySelector('.multiselect-options');
+                        if (optionsContainer) {
+                            const allOptions = optionsContainer.querySelectorAll('.multiselect-option');
+                            let restoredCount = 0;
+                            
+                            allOptions.forEach(option => {
+                                const value = option.dataset.value;
+                                const checkbox = option.querySelector('input[type="checkbox"]');
+                                if (checkbox && value) {
+                                    // Marcar checkbox se o valor estava selecionado E ainda existe nas novas opções
+                                    if (valuesToPreserve.includes(value)) {
+                                        checkbox.checked = true;
+                                        checkbox.setAttribute('checked', 'checked');
+                                        restoredCount++;
+                                        console.log(`[updateMultiSelectFilter] Campo: ${fieldName}, Restaurado checkbox: ${value}`);
+                                    } else {
+                                        checkbox.checked = false;
+                                        checkbox.removeAttribute('checked');
+                                    }
+                                }
+                            });
+                            
+                            console.log(`[updateMultiSelectFilter] Campo: ${fieldName}, ${restoredCount} checkboxes restaurados de ${valuesToPreserve.length} valores preservados`);
+                            
+                            // Atualizar display e hidden inputs APÓS restaurar checkboxes
+                            updateMultiSelectDisplay(dropdown);
+                            updateMultiSelectHidden(dropdown);
+                        }
+                    }, 150); // Aumentar delay para garantir que as opções foram criadas
+                } else {
+                    console.warn(`[updateMultiSelectFilter] Campo: ${fieldName}, Nenhuma opção recebida, mantendo valores atuais`);
+                }
+            })
+            .catch(error => {
+                console.error(`Erro ao atualizar multiselect ${fieldName}:`, error);
+            });
+    }
+    
     // Função para atualizar TODOS os outros filtros baseado em filtros ativos
     function updateAllOtherFilters(changedField = null) {
+        console.log(`[updateAllOtherFilters] Campo que mudou: ${changedField}`);
         const filterFields = ['prioridade', 'tribunal', 'natureza', 'situacao', 'regime', 'ano_orc'];
         filterFields.forEach(field => {
             if (field !== changedField) {
+                console.log(`[updateAllOtherFilters] Atualizando filtro: ${field} (campo que mudou: ${changedField})`);
                 updateFilter(field, changedField);
+            } else {
+                console.log(`[updateAllOtherFilters] Pulando filtro: ${field} (é o campo que mudou)`);
             }
         });
     }
@@ -1495,4 +2253,87 @@ function loadSingleFilterOption(fieldName, selectElement) {
             loadingOption.remove();
             console.error(`Erro ao carregar opções para ${fieldName}:`, error);
         });
+}
+
+// Função para exportar dados filtrados para CSV
+function exportToCSV() {
+    try {
+        // Mostrar loading no botão
+        const btn = document.getElementById('exportCSVBtn');
+        const originalHTML = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Exportando...';
+        
+        // Coletar todos os parâmetros de filtro do formulário
+        const form = document.getElementById('filterForm');
+        const params = new URLSearchParams();
+        
+        // Coletar valores dos multiselect dropdowns
+        const multiselectDropdowns = document.querySelectorAll('.multiselect-dropdown');
+        multiselectDropdowns.forEach(dropdown => {
+            const fieldName = dropdown.dataset.field;
+            // Coletar todos os inputs hidden com o mesmo nome
+            const hiddenInputs = dropdown.querySelectorAll(`input[type="hidden"][name="filter_${fieldName}"]`);
+            hiddenInputs.forEach(input => {
+                if (input.value && input.value.trim()) {
+                    params.append(`filter_${fieldName}`, input.value.trim());
+                }
+            });
+        });
+        
+        // Processar todos os inputs e selects do formulário
+        const formElements = form.elements;
+        for (let element of formElements) {
+            if (element.name && element.name.startsWith('filter_')) {
+                if (element.type === 'checkbox' || element.type === 'radio') {
+                    if (element.checked) {
+                        params.append(element.name, element.value);
+                    }
+                } else if (element.tagName === 'SELECT' && element.multiple) {
+                    // Para selects múltiplos, adicionar cada opção selecionada
+                    Array.from(element.selectedOptions).forEach(option => {
+                        if (option.value && option.value.trim()) {
+                            params.append(element.name, option.value);
+                        }
+                    });
+                } else if (element.type !== 'submit' && element.type !== 'button') {
+                    // Para outros inputs (text, number, hidden, select simples)
+                    if (element.value && element.value.trim()) {
+                        params.append(element.name, element.value);
+                    }
+                }
+            }
+        }
+        
+        // Adicionar parâmetros da URL atual (caso tenha filtros na URL)
+        const urlParams = new URLSearchParams(window.location.search);
+        for (const [key, value] of urlParams.entries()) {
+            if (key.startsWith('filter_') && !params.has(key)) {
+                params.append(key, value);
+            }
+        }
+        
+        // Criar URL para exportação
+        const exportUrl = `/api/export_csv?${params.toString()}`;
+        
+        // Fazer download do CSV
+        window.location.href = exportUrl;
+        
+        // Restaurar botão após um tempo
+        setTimeout(() => {
+            btn.disabled = false;
+            btn.innerHTML = originalHTML;
+        }, 2000);
+        
+    } catch (error) {
+        console.error('Erro ao exportar CSV:', error);
+        showAlert('Erro ao exportar CSV. Tente novamente.', 'error');
+        
+        // Restaurar botão
+        const btn = document.getElementById('exportCSVBtn');
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-download me-1"></i>Exportar CSV';
+        }
+    }
 }

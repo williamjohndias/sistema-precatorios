@@ -5,9 +5,10 @@ Sistema Web de Gerenciamento de Precatórios - Versão Vercel
 Interface web para visualizar e editar dados como uma planilha Excel
 """
 
-from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
+from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, Response
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from psycopg2 import ProgrammingError
 import logging
 from datetime import datetime, timezone, timedelta, date
 import json
@@ -200,16 +201,16 @@ class DatabaseManager:
             # Adicionar filtros
             where_conditions = []
             params = []
-            
+
             # Processar filtro esta_na_ordem primeiro (filtro padrão se não especificado)
-            esta_na_ordem_filter = filters.get('esta_na_ordem', 'true').strip().lower() if filters else 'true'
+            esta_na_ordem_filter = filters.get('esta_na_ordem', 'SIM').strip().upper() if filters else 'SIM'
 
             # Validar valor do filtro esta_na_ordem
-            if esta_na_ordem_filter in ('true', '1', 'sim', 's', 'yes', 'y'):
+            if esta_na_ordem_filter in ('TRUE', '1', 'SIM', 'S', 'YES', 'Y'):
                 where_conditions.append("esta_na_ordem = TRUE")
-            elif esta_na_ordem_filter in ('false', '0', 'não', 'nao', 'n', 'no'):
+            elif esta_na_ordem_filter in ('FALSE', '0', 'NÃO', 'NAO', 'N', 'NO'):
                 where_conditions.append("esta_na_ordem = FALSE")
-            elif esta_na_ordem_filter == '' or esta_na_ordem_filter == 'todos' or esta_na_ordem_filter == 'all':
+            elif esta_na_ordem_filter == '' or esta_na_ordem_filter == 'TODOS' or esta_na_ordem_filter == 'ALL':
                 # Não adiciona filtro (mostrar todos)
                 pass
             else:
@@ -252,9 +253,10 @@ class DatabaseManager:
                                 continue
                         # Para campos booleanos (exceto esta_na_ordem que já foi processado), converter string para boolean
                         elif field in ['nao_esta_na_ordem', 'presenca_no_pipe']:
-                            # Converter string 'true'/'false' para boolean PostgreSQL
+                            # Converter string 'SIM'/'NAO' para boolean PostgreSQL
                             if isinstance(value, str):
-                                bool_value = value.lower() in ('true', '1', 'sim', 's', 'yes', 'y')
+                                value_upper = value.strip().upper()
+                                bool_value = value_upper in ('TRUE', '1', 'SIM', 'S', 'YES', 'Y')
                             else:
                                 bool_value = bool(value)
                             where_conditions.append(f"{field} = %s")
@@ -275,20 +277,37 @@ class DatabaseManager:
                             except (ValueError, TypeError):
                                 logger.warning(f"Valor inválido para filtro de {field}: {value}")
                                 continue
-                        # Para ano_orc, garantir que seja integer
+                        # Para ano_orc, garantir que seja integer (pode ser lista ou valor único)
                         elif field == 'ano_orc':
                             try:
-                                ano_int = int(value) if value else None
-                                if ano_int is not None:
-                                    where_conditions.append(f"{field} = %s")
-                                    params.append(ano_int)
+                                # Se for lista (múltipla seleção)
+                                if isinstance(value, list):
+                                    anos_int = [int(v) for v in value if v]
+                                    if len(anos_int) > 0:
+                                        placeholders = ','.join(['%s'] * len(anos_int))
+                                        where_conditions.append(f"{field} IN ({placeholders})")
+                                        params.extend(anos_int)
+                                else:
+                                    # Valor único
+                                    ano_int = int(value) if value else None
+                                    if ano_int is not None:
+                                        where_conditions.append(f"{field} = %s")
+                                        params.append(ano_int)
                             except (ValueError, TypeError):
                                 logger.warning(f"Valor inválido para filtro de {field}: {value}")
                                 continue
-                        # Para campos dropdown texto, usar comparação exata
+                        # Para campos dropdown texto, usar comparação exata ou IN para múltiplos valores
                         elif field in ['organizacao', 'prioridade', 'tribunal', 'natureza', 'situacao', 'regime']:
-                            where_conditions.append(f"{field} = %s")
-                            params.append(value)
+                            # Se for lista (múltipla seleção), usar IN
+                            if isinstance(value, list):
+                                if len(value) > 0:
+                                    placeholders = ','.join(['%s'] * len(value))
+                                    where_conditions.append(f"{field} IN ({placeholders})")
+                                    params.extend(value)
+                            else:
+                                # Valor único, usar =
+                                where_conditions.append(f"{field} = %s")
+                                params.append(value)
                         else:
                             # Para outros campos texto (como precatorio), usar ILIKE
                             where_conditions.append(f"{field} ILIKE %s")
@@ -487,15 +506,54 @@ class DatabaseManager:
                 for filter_field, filter_value in active_filters.items():
                     # Não aplicar filtro no próprio campo
                     if filter_field != field and filter_value:
-                        # Campos de texto: usar igualdade exata para filtros dinâmicos (mais preciso)
+                        # Campos de texto: usar igualdade exata ou IN para múltiplos valores
                         if filter_field in ['organizacao', 'precatorio', 'tribunal', 'natureza', 'situacao', 'regime', 'prioridade']:
-                            where_conditions.append(f"{filter_field} = %s")
-                            params.append(filter_value)
-                        # Campos numéricos: igualdade exata
+                            # Se for string com vírgulas (múltiplos valores), converter para lista
+                            if isinstance(filter_value, str) and ',' in filter_value:
+                                filter_values_list = [v.strip() for v in filter_value.split(',') if v.strip()]
+                                if len(filter_values_list) > 1:
+                                    placeholders = ','.join(['%s'] * len(filter_values_list))
+                                    where_conditions.append(f"{filter_field} IN ({placeholders})")
+                                    params.extend(filter_values_list)
+                                elif len(filter_values_list) == 1:
+                                    where_conditions.append(f"{filter_field} = %s")
+                                    params.append(filter_values_list[0])
+                            elif isinstance(filter_value, list):
+                                if len(filter_value) > 1:
+                                    placeholders = ','.join(['%s'] * len(filter_value))
+                                    where_conditions.append(f"{filter_field} IN ({placeholders})")
+                                    params.extend(filter_value)
+                                elif len(filter_value) == 1:
+                                    where_conditions.append(f"{filter_field} = %s")
+                                    params.append(filter_value[0])
+                            else:
+                                where_conditions.append(f"{filter_field} = %s")
+                                params.append(filter_value)
+                        # Campos numéricos: igualdade exata ou IN
                         elif filter_field in ['ordem', 'ano_orc']:
                             try:
-                                where_conditions.append(f"{filter_field} = %s")
-                                params.append(int(filter_value))
+                                # Se for string com vírgulas (múltiplos valores)
+                                if isinstance(filter_value, str) and ',' in filter_value:
+                                    filter_values_list = [int(v.strip()) for v in filter_value.split(',') if v.strip()]
+                                    if len(filter_values_list) > 1:
+                                        placeholders = ','.join(['%s'] * len(filter_values_list))
+                                        where_conditions.append(f"{filter_field} IN ({placeholders})")
+                                        params.extend(filter_values_list)
+                                    elif len(filter_values_list) == 1:
+                                        where_conditions.append(f"{filter_field} = %s")
+                                        params.append(filter_values_list[0])
+                                elif isinstance(filter_value, list):
+                                    filter_values_list = [int(v) for v in filter_value if v]
+                                    if len(filter_values_list) > 1:
+                                        placeholders = ','.join(['%s'] * len(filter_values_list))
+                                        where_conditions.append(f"{filter_field} IN ({placeholders})")
+                                        params.extend(filter_values_list)
+                                    elif len(filter_values_list) == 1:
+                                        where_conditions.append(f"{filter_field} = %s")
+                                        params.append(filter_values_list[0])
+                                else:
+                                    where_conditions.append(f"{filter_field} = %s")
+                                    params.append(int(filter_value))
                             except (ValueError, TypeError):
                                 pass
                         # Campos booleanos
@@ -521,7 +579,6 @@ class DatabaseManager:
             # ESTRATÉGIA OTIMIZADA: usar GROUP BY para campos pequenos (mais rápido)
             # Para organização, usar ORDER BY + LIMIT e filtrar únicos em Python
             if is_small_field:
-                # Para campos pequenos, usar GROUP BY (muito mais rápido que DISTINCT)
                 query = (
                     f"SELECT {field} "
                     f"FROM {TABLE_NAME} "
@@ -1127,6 +1184,55 @@ def normalize_text(text: str) -> str:
     text = text.lower()
     text = re.sub(r'[^a-z0-9]+', '', text)
     return text
+
+
+def calculate_caprec(meses: int) -> str:
+    """
+    Calcula a classificação CAPREC baseada no número de meses.
+    
+    Regras:
+    - <= 7: A+
+    - <= 13: A
+    - <= 19: B+
+    - <= 25: B
+    - <= 31: C+
+    - <= 37: C
+    - <= 43: D+
+    - <= 49: D
+    - <= 55: E+
+    - <= 60: E
+    - > 60: F
+    """
+    if meses is None:
+        return None
+    
+    try:
+        meses_int = int(meses) if isinstance(meses, (int, float)) else int(float(str(meses)))
+    except (ValueError, TypeError):
+        return None
+    
+    if meses_int <= 7:
+        return "A+"
+    elif meses_int <= 13:
+        return "A"
+    elif meses_int <= 19:
+        return "B+"
+    elif meses_int <= 25:
+        return "B"
+    elif meses_int <= 31:
+        return "C+"
+    elif meses_int <= 37:
+        return "C"
+    elif meses_int <= 43:
+        return "D+"
+    elif meses_int <= 49:
+        return "D"
+    elif meses_int <= 55:
+        return "E+"
+    elif meses_int <= 60:
+        return "E"
+    else:  # meses_int > 60
+        return "F"
 
 
 def load_teto_repasse_from_csv(csv_path='cálculo.csv'):
@@ -1759,10 +1865,37 @@ def index():
         filters = {}
         filter_fields = ['precatorio', 'ordem', 'organizacao', 'regime', 'tipo', 'tribunal', 
                          'situacao', 'ano_orc', 'presenca_no_pipe', 'esta_na_ordem']
+        # Campos que suportam múltipla seleção
+        multi_select_fields = ['prioridade', 'tribunal', 'natureza', 'situacao', 'ano_orc', 'regime']
+        
         for field in filter_fields:
-            value = request.args.get(f'filter_{field}', '').strip()
-            if value:
-                filters[field] = value
+            # Para campos de múltipla seleção, usar getlist
+            if field in multi_select_fields:
+                values = request.args.getlist(f'filter_{field}')
+                logger.info(f"Coletando filtro {field}: getlist() retornou {len(values)} valores: {values}")
+                
+                # Se getlist retornar apenas um valor e ele contiver vírgulas, dividir (fallback)
+                if len(values) == 1 and ',' in values[0]:
+                    values = [v.strip() for v in values[0].split(',') if v.strip()]
+                    logger.info(f"Filtro {field}: Dividido por vírgula em {len(values)} valores: {values}")
+                
+                # Filtrar valores vazios e normalizar para string
+                normalized_values = []
+                for v in values:
+                    if v is not None:
+                        v_str = str(v).strip()
+                        if v_str:  # Apenas adicionar se não for vazio após strip
+                            normalized_values.append(v_str)
+                
+                if normalized_values:
+                    filters[field] = normalized_values
+                    logger.info(f"Filtro {field} final: {len(normalized_values)} valores -> {normalized_values}")
+                else:
+                    logger.info(f"Filtro {field}: Nenhum valor válido encontrado")
+            else:
+                value = request.args.get(f'filter_{field}', '').strip()
+                if value:
+                    filters[field] = value
         
         # Buscar valor máximo com cache (atualizado a cada 5 minutos)
         # Com índice idx_precatorios_esta_ordem_valor, a query é rápida (~100-500ms)
@@ -1815,7 +1948,7 @@ def index():
                 pass
         else:
             # Parâmetro não foi enviado (primeira carga ou não interagiu) - aplicar padrão
-            filters['esta_na_ordem'] = 'true'
+            filters['esta_na_ordem'] = 'SIM'
         
         # CARREGAR FILTROS: Organização carrega TODAS, outros filtros são dinâmicos baseados em filtros ativos
         logger.info("Carregando valores dos filtros no servidor...")
@@ -1843,7 +1976,12 @@ def index():
         other_fields = ['prioridade', 'tribunal', 'natureza', 'situacao', 'regime', 'ano_orc']
         active_filters_for_dynamic = {}
         if filters.get('organizacao'):
-            active_filters_for_dynamic['organizacao'] = filters['organizacao']
+            # Se organização for lista, pegar o primeiro valor para filtro dinâmico
+            org_filter = filters['organizacao']
+            if isinstance(org_filter, list) and len(org_filter) > 0:
+                active_filters_for_dynamic['organizacao'] = org_filter[0]
+            elif isinstance(org_filter, str):
+                active_filters_for_dynamic['organizacao'] = org_filter
         
         for field in other_fields:
             try:
@@ -1860,9 +1998,29 @@ def index():
                 logger.warning(f"Erro ao carregar {field}: {e}")
                 filter_values[field] = []
         
+        # Normalizar filtros ANTES de buscar dados (para garantir que a query SQL funcione corretamente)
+        # Mas manter os filtros originais para o template também
+        filters_for_query = {}
+        for key, value in filters.items():
+            if key in ['prioridade', 'tribunal', 'natureza', 'situacao', 'regime', 'ano_orc']:
+                # Garantir que seja uma lista de strings para a query
+                if isinstance(value, list):
+                    normalized_list = []
+                    for v in value:
+                        if v is not None:
+                            v_str = str(v).strip()
+                            if v_str:
+                                normalized_list.append(v_str)
+                    if normalized_list:
+                        filters_for_query[key] = normalized_list
+                elif isinstance(value, str) and value:
+                    filters_for_query[key] = [value.strip()]
+            else:
+                filters_for_query[key] = value
+        
         # Obter dados paginados com ordenação (PRIORIDADE MÁXIMA)
         try:
-            result = db_manager.get_precatorios_paginated(page=page, per_page=per_page, filters=filters, sort_field=sort_field, sort_order=sort_order)
+            result = db_manager.get_precatorios_paginated(page=page, per_page=per_page, filters=filters_for_query, sort_field=sort_field, sort_order=sort_order)
             # Calcular acumulativo e PEC 66 (meses) para cada registro
             if result.get('data') and len(result['data']) > 0:
                 try:
@@ -1883,6 +2041,29 @@ def index():
                         # Buscar todos os registros desta organização do banco (ordenados por ordem)
                         if db_manager.cursor:
                             try:
+                                # Verificar se cursor está válido antes de usar
+                                if db_manager.cursor.closed:
+                                    # Tentar recriar cursor se estiver fechado
+                                    try:
+                                        if db_manager.connection and not db_manager.connection.closed:
+                                            db_manager.cursor = db_manager.connection.cursor()
+                                        else:
+                                            # Se conexão também estiver fechada, pular esta organização
+                                            for record in records_page:
+                                                record['acumulativo_pec66'] = None
+                                                record['pec66_resultado'] = None
+                                                record['pec66_resultado_arredondado'] = None
+                                                record['caprec'] = None
+                                            continue
+                                    except Exception:
+                                        # Se não conseguir recriar cursor, pular esta organização
+                                        for record in records_page:
+                                            record['acumulativo_pec66'] = None
+                                            record['pec66_resultado'] = None
+                                            record['pec66_resultado_arredondado'] = None
+                                            record['caprec'] = None
+                                        continue
+                                
                                 acum_query = f"""
                                     SELECT ordem, valor
                                     FROM {TABLE_NAME}
@@ -1892,7 +2073,33 @@ def index():
                                     ORDER BY ordem ASC
                                 """
                                 db_manager.cursor.execute(acum_query, (org,))
-                                all_records_org = db_manager.cursor.fetchall()
+                                
+                                # Buscar resultados de forma segura
+                                all_records_org = []
+                                try:
+                                    # Tentar buscar todos os resultados
+                                    all_records_org = db_manager.cursor.fetchall()
+                                except (ProgrammingError, Exception) as fetch_error:
+                                    # Se "no results to fetch" ou erro de programação relacionado, tratar como lista vazia
+                                    error_str = str(fetch_error).lower()
+                                    error_msg = str(fetch_error)
+                                    
+                                    # Verificar se é um erro de "sem resultados" (situação normal)
+                                    if ('no results to fetch' in error_str or 
+                                        'no results' in error_str or
+                                        'no row' in error_str or
+                                        'result has already been consumed' in error_str):
+                                        # Não há resultados ou cursor já foi consumido, tratar como lista vazia
+                                        all_records_org = []
+                                    else:
+                                        # Outro tipo de erro, verificar se é erro de cursor
+                                        if isinstance(fetch_error, ProgrammingError):
+                                            # Erro de programação, provavelmente cursor já usado
+                                            all_records_org = []
+                                        else:
+                                            # Erro real, re-lançar apenas se for crítico
+                                            # Para a maioria dos casos, tratar como lista vazia
+                                            all_records_org = []
                                 
                                 # Calcular acumulativo progressivo
                                 acumulativo_dict = {}  # ordem -> acumulativo
@@ -1961,33 +2168,67 @@ def index():
                                                     record['pec66_resultado'] = meses
                                                     # Arredondar para cima (sempre para o próximo mês inteiro)
                                                     record['pec66_resultado_arredondado'] = math.ceil(meses)
+                                                    # Calcular CAPREC baseado nos meses arredondados
+                                                    record['caprec'] = calculate_caprec(record['pec66_resultado_arredondado'])
                                                 else:
                                                     record['pec66_resultado'] = None
                                                     record['pec66_resultado_arredondado'] = None
+                                                    record['caprec'] = None
                                             else:
                                                 record['pec66_resultado'] = None
                                                 record['pec66_resultado_arredondado'] = None
+                                                record['caprec'] = None
                                         except (ValueError, TypeError):
                                             record['acumulativo_pec66'] = None
                                             record['pec66_resultado'] = None
                                             record['pec66_resultado_arredondado'] = None
+                                            record['caprec'] = None
                                     else:
                                         record['acumulativo_pec66'] = None
                                         record['pec66_resultado'] = None
                                         record['pec66_resultado_arredondado'] = None
-                            except Exception as acum_error:
-                                logger.warning(f"Erro ao calcular acumulativo para {org}: {acum_error}")
-                                # Inicializar como None se houver erro
-                                for record in records_page:
-                                    record['acumulativo_pec66'] = None
-                                    record['pec66_resultado'] = None
-                                    record['pec66_resultado_arredondado'] = None
+                                        record['caprec'] = None
+                            except (ProgrammingError, Exception) as acum_error:
+                                # Verificar se é um erro real ou apenas "sem resultados"
+                                error_str = str(acum_error).lower()
+                                error_msg = str(acum_error)
+                                
+                                # Lista de erros que são normais (não devem ser logados como warning)
+                                normal_errors = [
+                                    'no results to fetch',
+                                    'no results',
+                                    'no row',
+                                    'result has already been consumed',
+                                    'cursor',
+                                    'closed'
+                                ]
+                                
+                                is_normal_error = any(normal_err in error_str for normal_err in normal_errors)
+                                
+                                if is_normal_error or isinstance(acum_error, ProgrammingError):
+                                    # Não há resultados ou erro de cursor (situação normal)
+                                    # Não logar como warning, apenas inicializar como None
+                                    for record in records_page:
+                                        record['acumulativo_pec66'] = None
+                                        record['pec66_resultado'] = None
+                                        record['pec66_resultado_arredondado'] = None
+                                        record['caprec'] = None
+                                else:
+                                    # Erro real e crítico, logar como warning
+                                    logger.warning(f"Erro ao calcular acumulativo para {org}: {acum_error}")
+                                    # Inicializar como None em caso de erro
+                                    for record in records_page:
+                                        record['acumulativo_pec66'] = None
+                                        record['pec66_resultado'] = None
+                                        record['pec66_resultado_arredondado'] = None
+                                        record['caprec'] = None
                         else:
                             # Se não houver cursor, inicializar como None
                             for record in records_page:
                                 record['acumulativo_pec66'] = None
                                 record['pec66_resultado'] = None
                                 record['pec66_resultado_arredondado'] = None
+                                record['caprec'] = None
                     
                     # Para registros sem organização, inicializar como None
                     for record in result['data']:
@@ -1995,6 +2236,7 @@ def index():
                             record['acumulativo_pec66'] = None
                             record['pec66_resultado'] = None
                             record['pec66_resultado_arredondado'] = None
+                            record['caprec'] = None
                             
                 except Exception as pec66_error:
                     logger.error(f"Erro ao calcular PEC 66: {pec66_error}")
@@ -2005,6 +2247,7 @@ def index():
                         record['acumulativo_pec66'] = None
                         record['pec66_resultado'] = None
                         record['pec66_resultado_arredondado'] = None
+                        record['caprec'] = None
         except Exception as e:
             logger.error(f"Erro ao buscar precatórios: {e}")
             import traceback
@@ -2022,7 +2265,7 @@ def index():
                     'prev_num': None,
                     'next_num': None
                 }
-            }
+        }
         
         # max_valor já foi obtido anteriormente (não buscar novamente)
         
@@ -2041,6 +2284,7 @@ def index():
             {'name': 'valor', 'label': 'Valor', 'type': 'numeric', 'editable': True, 'visible': True},
             {'name': 'acumulativo_pec66', 'label': 'Valor Acumulado', 'type': 'numeric', 'editable': False, 'visible': True},
             {'name': 'pec66_resultado_arredondado', 'label': 'Meses', 'type': 'numeric', 'editable': False, 'visible': True},
+            {'name': 'caprec', 'label': 'CAPREC', 'type': 'character varying', 'editable': False, 'visible': True},
             {'name': 'presenca_no_pipe', 'label': 'No Pipe', 'type': 'boolean', 'editable': False, 'visible': True},
         ]
         
@@ -2063,10 +2307,38 @@ def index():
         if max_valor == 0.0:
             max_valor = None
 
+        # Normalizar filtros para garantir que campos multi-select sejam sempre listas de strings
+        # IMPORTANTE: Manter todos os filtros, mesmo os vazios, para que o template possa gerar os hidden inputs corretos
+        normalized_filters = {}
+        for key, value in filters.items():
+            if key in ['prioridade', 'tribunal', 'natureza', 'situacao', 'regime', 'ano_orc']:
+                # Garantir que seja uma lista de strings
+                if isinstance(value, list):
+                    # Normalizar todos os valores para string
+                    normalized_list = []
+                    for v in value:
+                        if v is not None:
+                            v_str = str(v).strip()
+                            if v_str:  # Apenas adicionar se não for vazio
+                                normalized_list.append(v_str)
+                    normalized_filters[key] = normalized_list
+                    logger.info(f"Normalizando filtro {key}: lista com {len(value)} valores -> {len(normalized_list)} valores normalizados: {normalized_list}")
+                elif isinstance(value, str) and value:
+                    normalized_filters[key] = [value.strip()]
+                    logger.info(f"Normalizando filtro {key}: string '{value}' -> lista com 1 valor")
+                else:
+                    # Se for None ou vazio, manter como lista vazia
+                    normalized_filters[key] = []
+            else:
+                normalized_filters[key] = value
+        
+        # Log detalhado para debug
+        logger.info(f"Filtros normalizados para template: {[(k, f'{len(v)} valores: {v}' if isinstance(v, list) else v) for k, v in normalized_filters.items() if k in ['prioridade', 'tribunal', 'natureza', 'situacao', 'regime', 'ano_orc']]}")
+
         return render_template('index.html',
                              precatorios=result['data'],
                              pagination=result['pagination'],
-                             filters=filters,
+                             filters=normalized_filters,
                              filter_values=filter_values,
                              display_fields=display_fields,
                              sorting=sorting,
@@ -2245,7 +2517,7 @@ def get_all_ids():
         
         # Aplicar filtro padrão se não especificado
         if 'esta_na_ordem' not in filters:
-            filters['esta_na_ordem'] = 'true'
+            filters['esta_na_ordem'] = 'SIM'
         
         # Buscar IDs de forma mais eficiente usando query direta
         # Limitar a 5000 para evitar timeout (ajuste conforme necessário)
@@ -2365,6 +2637,365 @@ def logs():
         logger.error(f"Traceback: {traceback.format_exc()}")
         flash(f'Erro ao carregar logs: {e}', 'error')
         return render_template('error.html')
+    
+    finally:
+        db_manager.disconnect()
+
+@app.route('/api/export_csv', methods=['GET'])
+def export_csv():
+    """Exporta os dados filtrados para CSV"""
+    try:
+        if not db_manager.connect():
+            return jsonify({'success': False, 'message': 'Erro ao conectar com banco'}), 500
+        
+        # Processar filtros (mesma lógica da rota index)
+        filters = {}
+        filter_fields = ['precatorio', 'ordem', 'organizacao', 'regime', 'tipo', 'tribunal', 
+                         'situacao', 'ano_orc', 'presenca_no_pipe', 'esta_na_ordem']
+        # Campos que suportam múltipla seleção
+        multi_select_fields = ['prioridade', 'tribunal', 'natureza', 'situacao', 'ano_orc', 'regime']
+        
+        for field in filter_fields:
+            # Para campos de múltipla seleção, usar getlist
+            if field in multi_select_fields:
+                values = request.args.getlist(f'filter_{field}')
+                # Se getlist retornar apenas um valor e ele contiver vírgulas, dividir (fallback)
+                if len(values) == 1 and ',' in values[0]:
+                    values = [v.strip() for v in values[0].split(',') if v.strip()]
+                # Filtrar valores vazios
+                values = [v.strip() for v in values if v and v.strip()]
+                if values:
+                    filters[field] = values
+            else:
+                value = request.args.get(f'filter_{field}', '').strip()
+                if value:
+                    filters[field] = value
+        
+        # Processar filtros de valor
+        def _normalize_currency_str(s: str):
+            if not s or not s.strip():
+                return None
+            try:
+                s = s.replace('R$', '').replace(' ', '').strip()
+                if ',' in s:
+                    s = s.replace('.', '').replace(',', '.')
+                s = re.sub(r"[^0-9.]", "", s)
+                return float(s) if s else None
+            except Exception as e:
+                logger.warning(f"Erro ao normalizar valor: {s} - {e}")
+                return None
+
+        raw_valor_min = request.args.get('filter_valor_min', '').strip()
+        normalized_valor_min = _normalize_currency_str(raw_valor_min)
+        if normalized_valor_min is not None and normalized_valor_min > 0:
+            filters['valor_min'] = str(normalized_valor_min)
+
+        raw_valor_max = request.args.get('filter_valor_max', '').strip()
+        normalized_valor_max = _normalize_currency_str(raw_valor_max)
+        if normalized_valor_max is not None and normalized_valor_max > 0:
+            filters['valor_max'] = str(normalized_valor_max)
+        
+        # Filtro padrão: esta_na_ordem
+        esta_na_ordem_param = request.args.get('filter_esta_na_ordem', None)
+        if esta_na_ordem_param is not None:
+            if esta_na_ordem_param.strip() == '':
+                pass  # Todos
+            else:
+                pass  # Já está em filters
+        else:
+            filters['esta_na_ordem'] = 'SIM'
+        
+        # Buscar TODOS os registros (sem paginação) com os filtros aplicados
+        # Usar uma página grande para pegar todos (mas não infinito)
+        result = db_manager.get_precatorios_paginated(page=1, per_page=50000, filters=filters, 
+                                                      sort_field='ordem', sort_order='asc')
+        
+        records = result.get('data', [])
+        
+        if not records:
+            return jsonify({'success': False, 'message': 'Nenhum registro encontrado para exportar'}), 404
+        
+        # Calcular PEC 66 e CAPREC para todos os registros (mesma lógica da rota index)
+        if records:
+            try:
+                # Agrupar registros por organização
+                organizacoes_dict = {}
+                for record in records:
+                    org = record.get('organizacao')
+                    if org:
+                        if org not in organizacoes_dict:
+                            organizacoes_dict[org] = []
+                        organizacoes_dict[org].append(record)
+                
+                # Para cada organização, buscar todos os registros ordenados por ordem
+                teto_dict = get_teto_dict()
+                
+                for org, records_org in organizacoes_dict.items():
+                    if db_manager.cursor:
+                        try:
+                            # Verificar se cursor está válido antes de usar
+                            if db_manager.cursor.closed:
+                                # Tentar recriar cursor se estiver fechado
+                                try:
+                                    if db_manager.connection and not db_manager.connection.closed:
+                                        db_manager.cursor = db_manager.connection.cursor()
+                                    else:
+                                        # Se conexão também estiver fechada, pular esta organização
+                                        for record in records_org:
+                                            record['acumulativo_pec66'] = None
+                                            record['pec66_resultado'] = None
+                                            record['pec66_resultado_arredondado'] = None
+                                            record['caprec'] = None
+                                        continue
+                                except Exception:
+                                    # Se não conseguir recriar cursor, pular esta organização
+                                    for record in records_org:
+                                        record['acumulativo_pec66'] = None
+                                        record['pec66_resultado'] = None
+                                        record['pec66_resultado_arredondado'] = None
+                                        record['caprec'] = None
+                                    continue
+                            
+                            acum_query = f"""
+                                SELECT ordem, valor
+                                FROM {TABLE_NAME}
+                                WHERE organizacao = %s 
+                                    AND esta_na_ordem = TRUE 
+                                    AND valor IS NOT NULL
+                                ORDER BY ordem ASC
+                            """
+                            db_manager.cursor.execute(acum_query, (org,))
+                            
+                            # Buscar resultados de forma segura
+                            all_records_org = []
+                            try:
+                                # Tentar buscar todos os resultados
+                                all_records_org = db_manager.cursor.fetchall()
+                            except (ProgrammingError, Exception) as fetch_error:
+                                # Se "no results to fetch" ou erro de programação relacionado, tratar como lista vazia
+                                error_str = str(fetch_error).lower()
+                                error_msg = str(fetch_error)
+                                
+                                # Verificar se é um erro de "sem resultados" (situação normal)
+                                if ('no results to fetch' in error_str or 
+                                    'no results' in error_str or
+                                    'no row' in error_str or
+                                    'result has already been consumed' in error_str):
+                                    # Não há resultados ou cursor já foi consumido, tratar como lista vazia
+                                    all_records_org = []
+                                else:
+                                    # Outro tipo de erro, verificar se é erro de cursor
+                                    if isinstance(fetch_error, ProgrammingError):
+                                        # Erro de programação, provavelmente cursor já usado
+                                        all_records_org = []
+                                    else:
+                                        # Erro real, re-lançar apenas se for crítico
+                                        # Para a maioria dos casos, tratar como lista vazia
+                                        all_records_org = []
+                            
+                            # Calcular acumulativo progressivo
+                            acumulativo_dict = {}
+                            acumulativo = 0.0
+                            
+                            for row in all_records_org:
+                                ordem = row.get('ordem')
+                                valor = row.get('valor')
+                                if ordem is not None and valor is not None:
+                                    try:
+                                        valor_float = float(valor) if isinstance(valor, (int, float)) else float(str(valor).replace(',', '.'))
+                                        acumulativo += valor_float
+                                        acumulativo_dict[int(ordem)] = acumulativo
+                                    except (ValueError, TypeError):
+                                        pass
+                            
+                            # Adicionar acumulativo aos registros
+                            for record in records_org:
+                                ordem = record.get('ordem')
+                                if ordem is not None:
+                                    try:
+                                        ordem_int = int(ordem)
+                                        record['acumulativo_pec66'] = acumulativo_dict.get(ordem_int)
+                                        
+                                        # Calcular meses e CAPREC
+                                        if record['acumulativo_pec66'] is not None:
+                                            teto_mensal = None
+                                            municipio_org = org.strip()
+                                            estado_org = None
+                                            
+                                            if ' - ' in municipio_org:
+                                                parts = municipio_org.split(' - ', 1)
+                                                municipio_org = parts[0].strip()
+                                                estado_org = parts[1].strip() if len(parts) > 1 else None
+                                            
+                                            search_keys = []
+                                            if estado_org:
+                                                search_keys.append(f"{municipio_org} - {estado_org}")
+                                                search_keys.append(f"{municipio_org}/{estado_org}")
+                                            search_keys.append(municipio_org)
+                                            
+                                            for key in search_keys:
+                                                if key in teto_dict:
+                                                    teto_mensal = teto_dict[key]
+                                                    break
+                                            
+                                            if teto_mensal is None and teto_dict:
+                                                municipio_lower = municipio_org.lower()
+                                                for csv_key, csv_teto in teto_dict.items():
+                                                    if municipio_lower in csv_key.lower() or csv_key.lower() in municipio_lower:
+                                                        if estado_org and estado_org.lower() in csv_key.lower():
+                                                            teto_mensal = csv_teto
+                                                            break
+                                                        elif not estado_org:
+                                                            teto_mensal = csv_teto
+                                                            break
+                                            
+                                            if teto_mensal and teto_mensal > 0:
+                                                meses = record['acumulativo_pec66'] / teto_mensal
+                                                record['pec66_resultado'] = meses
+                                                record['pec66_resultado_arredondado'] = math.ceil(meses)
+                                                record['caprec'] = calculate_caprec(record['pec66_resultado_arredondado'])
+                                            else:
+                                                record['pec66_resultado'] = None
+                                                record['pec66_resultado_arredondado'] = None
+                                                record['caprec'] = None
+                                        else:
+                                            record['pec66_resultado'] = None
+                                            record['pec66_resultado_arredondado'] = None
+                                            record['caprec'] = None
+                                    except (ValueError, TypeError):
+                                        record['acumulativo_pec66'] = None
+                                        record['pec66_resultado'] = None
+                                        record['pec66_resultado_arredondado'] = None
+                                        record['caprec'] = None
+                        except (ProgrammingError, Exception) as acum_error:
+                            # Verificar se é um erro real ou apenas "sem resultados"
+                            error_str = str(acum_error).lower()
+                            error_msg = str(acum_error)
+                            
+                            # Lista de erros que são normais (não devem ser logados como warning)
+                            normal_errors = [
+                                'no results to fetch',
+                                'no results',
+                                'no row',
+                                'result has already been consumed',
+                                'cursor',
+                                'closed'
+                            ]
+                            
+                            is_normal_error = any(normal_err in error_str for normal_err in normal_errors)
+                            
+                            if is_normal_error or isinstance(acum_error, ProgrammingError):
+                                # Não há resultados ou erro de cursor (situação normal)
+                                # Não logar como warning
+                                for record in records_org:
+                                    record['acumulativo_pec66'] = None
+                                    record['pec66_resultado'] = None
+                                    record['pec66_resultado_arredondado'] = None
+                                    record['caprec'] = None
+                            else:
+                                # Erro real e crítico, logar como warning
+                                logger.warning(f"Erro ao calcular acumulativo para {org}: {acum_error}")
+                                for record in records_org:
+                                    record['acumulativo_pec66'] = None
+                                    record['pec66_resultado'] = None
+                                    record['pec66_resultado_arredondado'] = None
+                                    record['caprec'] = None
+                
+                # Para registros sem organização
+                for record in records:
+                    if not record.get('organizacao'):
+                        record['acumulativo_pec66'] = None
+                        record['pec66_resultado'] = None
+                        record['pec66_resultado_arredondado'] = None
+                        record['caprec'] = None
+                        
+            except Exception as pec66_error:
+                logger.error(f"Erro ao calcular PEC 66 para CSV: {pec66_error}")
+                # Continuar mesmo com erro nos cálculos
+        
+        # Definir campos para exportação (campos visíveis)
+        export_fields = [
+            {'name': 'precatorio', 'label': 'Precatório'},
+            {'name': 'ordem', 'label': 'Ordem'},
+            {'name': 'organizacao', 'label': 'Organização'},
+            {'name': 'prioridade', 'label': 'Prioridade'},
+            {'name': 'tribunal', 'label': 'Tribunal'},
+            {'name': 'natureza', 'label': 'Natureza'},
+            {'name': 'regime', 'label': 'Regime'},
+            {'name': 'ano_orc', 'label': 'Ano Orçamentário'},
+            {'name': 'situacao', 'label': 'Situação'},
+            {'name': 'valor', 'label': 'Valor'},
+            {'name': 'acumulativo_pec66', 'label': 'Valor Acumulado'},
+            {'name': 'pec66_resultado_arredondado', 'label': 'Meses'},
+            {'name': 'caprec', 'label': 'CAPREC'},
+            {'name': 'presenca_no_pipe', 'label': 'No Pipe'},
+        ]
+        
+        # Criar CSV em memória
+        import io
+        output = io.StringIO()
+        
+        # Escrever cabeçalho
+        headers = [field['label'] for field in export_fields]
+        writer = csv.writer(output, delimiter=';', lineterminator='\n')
+        writer.writerow(headers)
+        
+        # Escrever dados
+        for record in records:
+            row = []
+            for field in export_fields:
+                value = record.get(field['name'])
+                
+                # Formatar valores
+                if value is None:
+                    row.append('')
+                elif field['name'] == 'valor' or field['name'] == 'acumulativo_pec66':
+                    # Formatar como número brasileiro
+                    try:
+                        if isinstance(value, str):
+                            value = float(value.replace(',', '.'))
+                        formatted = f"{float(value):,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+                        row.append(formatted)
+                    except:
+                        row.append(str(value))
+                elif field['name'] == 'presenca_no_pipe':
+                    row.append('Sim' if value else 'Não')
+                elif field['name'] == 'pec66_resultado_arredondado':
+                    row.append(str(int(value)) if value is not None else '')
+                else:
+                    row.append(str(value))
+            
+            writer.writerow(row)
+        
+        # Preparar resposta
+        output.seek(0)
+        csv_data = output.getvalue()
+        output.close()
+        
+        # Gerar nome do arquivo com timestamp
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f'precatorios_{timestamp}.csv'
+        
+        # Retornar CSV
+        response = Response(
+            csv_data,
+            mimetype='text/csv; charset=utf-8',
+            headers={
+                'Content-Disposition': f'attachment; filename={filename}',
+                'Content-Type': 'text/csv; charset=utf-8'
+            }
+        )
+        
+        # Adicionar BOM para UTF-8 (para Excel abrir corretamente)
+        response.data = '\ufeff' + csv_data
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"Erro ao exportar CSV: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return jsonify({'success': False, 'message': str(e)}), 500
     
     finally:
         db_manager.disconnect()
