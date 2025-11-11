@@ -1695,68 +1695,142 @@ def enrich_records_with_pec66(records: List[Dict[str, Any]], db_manager: 'Databa
                 logger.error(f"Erro ao criar cursor: {e}")
                 return calculate_pec66_for_records(records)
 
-        # Para cada organização, buscar todos os registros e calcular acumulativo
+        # OTIMIZAÇÃO: Buscar todos os acumulativos de uma vez usando uma única query
+        # Descobrir a maior ordem necessária para cada organização
+        max_ordem_por_org = {}
         for org, records_org in organizacoes_dict.items():
+            max_ordem = 0
+            for record in records_org:
+                ordem = record.get('ordem')
+                if ordem is not None:
+                    try:
+                        ordem_int = int(ordem)
+                        max_ordem = max(max_ordem, ordem_int)
+                    except (ValueError, TypeError):
+                        pass
+            if max_ordem > 0:
+                max_ordem_por_org[org] = max_ordem
+
+        if max_ordem_por_org:
             try:
-                # Buscar todos os registros desta organização ordenados por ordem
-                acum_query = f"""
-                    SELECT ordem, valor
-                    FROM {TABLE_NAME}
-                    WHERE organizacao = %s 
-                        AND esta_na_ordem = TRUE 
-                        AND valor IS NOT NULL
-                    ORDER BY ordem ASC
-                """
                 # Verificar se cursor ainda está válido antes de usar
                 if not db_manager.cursor or db_manager.cursor.closed:
                     if db_manager.connection and not db_manager.connection.closed:
                         db_manager.cursor = db_manager.connection.cursor()
                     else:
-                        logger.error(f"Conexão/cursor inválido para {org}, pulando")
-                        continue
+                        logger.error("Conexão/cursor inválido, pulando cálculo de acumulativos")
+                        return calculate_pec66_for_records(records)
+
+                # Construir query única com todas as organizações usando IN
+                organizacoes_list = list(max_ordem_por_org.keys())
+                placeholders = ','.join(['%s'] * len(organizacoes_list))
+                
+                # Query otimizada: busca todos os registros de todas as organizações de uma vez
+                # e calcula acumulativo usando window function
+                acum_query = f"""
+                    SELECT 
+                        organizacao,
+                        ordem,
+                        SUM(COALESCE(valor, 0)) OVER (
+                            PARTITION BY organizacao
+                            ORDER BY ordem ASC
+                            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+                        ) AS acumulativo_pec66
+                    FROM {TABLE_NAME}
+                    WHERE organizacao IN ({placeholders})
+                        AND esta_na_ordem = TRUE 
+                        AND valor IS NOT NULL
+                    ORDER BY organizacao, ordem ASC
+                """
                 
                 try:
-                    db_manager.cursor.execute(acum_query, (org,))
-                    all_records_org = db_manager.cursor.fetchall()
+                    db_manager.cursor.execute(acum_query, organizacoes_list)
+                    all_rows = db_manager.cursor.fetchall()
                 except (ProgrammingError, Exception) as fetch_error:
                     error_str = str(fetch_error).lower()
                     if ('no results to fetch' in error_str or 
                         'no results' in error_str or
                         'no row' in error_str or
                         'result has already been consumed' in error_str):
-                        all_records_org = []
+                        all_rows = []
                     else:
-                        logger.warning(f"Erro ao buscar registros para {org}: {fetch_error}")
-                        all_records_org = []
+                        logger.warning(f"Erro ao buscar acumulativos: {fetch_error}")
+                        all_rows = []
 
-                # Calcular acumulativo progressivo
-                acumulativo_dict = {}  # ordem -> acumulativo
-                acumulativo = 0.0
+                # Organizar acumulativos por organização e ordem
+                acumulativos_por_org: Dict[str, Dict[int, Optional[float]]] = defaultdict(dict)
                 
-                for row in all_records_org:
+                for row in all_rows:
+                    org = row.get('organizacao')
                     ordem = row.get('ordem')
-                    valor = row.get('valor')
-                    if ordem is not None and valor is not None:
-                        try:
-                            valor_float = float(valor) if isinstance(valor, (int, float)) else float(str(valor).replace(',', '.'))
-                            acumulativo += valor_float
-                            acumulativo_dict[int(ordem)] = acumulativo
-                        except (ValueError, TypeError):
-                            pass
+                    acumulativo = row.get('acumulativo_pec66')
+                    if org is None or ordem is None:
+                        continue
+                    try:
+                        ordem_int = int(ordem)
+                        acumulativo_float = float(acumulativo) if acumulativo is not None else None
+                        acumulativos_por_org[org][ordem_int] = acumulativo_float
+                    except (ValueError, TypeError):
+                        pass
 
-                # Atribuir acumulativo aos registros da página atual
-                for record in records_org:
-                    ordem = record.get('ordem')
-                    if ordem is not None:
-                        try:
-                            ordem_int = int(ordem)
-                            record['acumulativo_pec66'] = acumulativo_dict.get(ordem_int)
-                        except (ValueError, TypeError):
-                            pass
+                # Atribuir acumulativos aos registros da página atual
+                for org, records_org in organizacoes_dict.items():
+                    for record in records_org:
+                        ordem = record.get('ordem')
+                        if ordem is not None:
+                            try:
+                                ordem_int = int(ordem)
+                                record['acumulativo_pec66'] = acumulativos_por_org.get(org, {}).get(ordem_int)
+                            except (ValueError, TypeError):
+                                pass
 
             except Exception as e:
-                logger.error(f"Erro ao calcular acumulativo para {org}: {e}")
-                # Continuar com outras organizações mesmo se uma falhar
+                logger.error(f"Erro ao calcular acumulativos otimizado: {e}")
+                # Fallback: tentar calcular individualmente apenas se a query otimizada falhar
+                for org, records_org in organizacoes_dict.items():
+                    try:
+                        org_query = f"""
+                            SELECT ordem, valor
+                            FROM {TABLE_NAME}
+                            WHERE organizacao = %s 
+                                AND esta_na_ordem = TRUE 
+                                AND valor IS NOT NULL
+                            ORDER BY ordem ASC
+                            LIMIT 1000
+                        """
+                        if not db_manager.cursor or db_manager.cursor.closed:
+                            if db_manager.connection and not db_manager.connection.closed:
+                                db_manager.cursor = db_manager.connection.cursor()
+                            else:
+                                continue
+                        
+                        db_manager.cursor.execute(org_query, (org,))
+                        org_rows = db_manager.cursor.fetchall()
+                        
+                        acumulativo = 0.0
+                        acumulativo_dict = {}
+                        for row in org_rows:
+                            ordem = row.get('ordem')
+                            valor = row.get('valor')
+                            if ordem is not None and valor is not None:
+                                try:
+                                    valor_float = float(valor) if isinstance(valor, (int, float)) else float(str(valor).replace(',', '.'))
+                                    acumulativo += valor_float
+                                    acumulativo_dict[int(ordem)] = acumulativo
+                                except (ValueError, TypeError):
+                                    pass
+                        
+                        for record in records_org:
+                            ordem = record.get('ordem')
+                            if ordem is not None:
+                                try:
+                                    ordem_int = int(ordem)
+                                    record['acumulativo_pec66'] = acumulativo_dict.get(ordem_int)
+                                except (ValueError, TypeError):
+                                    pass
+                    except Exception as org_error:
+                        logger.error(f"Erro ao calcular acumulativo individual para {org}: {org_error}")
+                        continue
 
         # Calcular meses e CAPREC para todos os registros
         enriched = calculate_pec66_for_records(records)
