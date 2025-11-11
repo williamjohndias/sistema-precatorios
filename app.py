@@ -2119,12 +2119,11 @@ def index():
             'ano_orc': []
         }
         
-        # ORGANIZAÇÃO: Carregar com limite inicial para performance (carregar mais via AJAX se necessário)
+        # ORGANIZAÇÃO: Carregar TODAS as organizações (sem limite)
         try:
-            # Limitar a 200 organizações inicialmente para carregamento rápido
-            # O usuário pode buscar mais via API se necessário
-            filter_values['organizacao'] = db_manager.get_filter_values('organizacao', use_cache=True, limit_count=200, active_filters=None)
-            logger.info(f"Organização carregada: {len(filter_values['organizacao'])} valores (limitado a 200 para performance)")
+            # Carregar todas as organizações do banco (sem limite)
+            filter_values['organizacao'] = db_manager.get_filter_values('organizacao', use_cache=True, limit_count=None, active_filters=None)
+            logger.info(f"Organização carregada: {len(filter_values['organizacao'])} valores (TODAS)")
         except Exception as e:
             logger.warning(f"Erro ao carregar organização: {e}")
             filter_values['organizacao'] = []
