@@ -1685,6 +1685,14 @@ def enrich_records_with_pec66(records: List[Dict[str, Any]], db_manager: 'Databa
     try:
         for org, records_org in organizacoes_dict.items():
             try:
+                # Verificar se cursor está válido antes de usar
+                if not db_manager.cursor or db_manager.cursor.closed:
+                    if db_manager.connection and not db_manager.connection.closed:
+                        db_manager.cursor = db_manager.connection.cursor()
+                    else:
+                        logger.warning(f"Conexão/cursor inválido para {org}, pulando")
+                        continue
+                
                 # Query simples: busca todos os registros da organização em ordem
                 org_query = f"""
                     SELECT ordem, valor
@@ -1725,15 +1733,23 @@ def enrich_records_with_pec66(records: List[Dict[str, Any]], db_manager: 'Databa
                 logger.warning(f"Erro ao calcular acumulativo para {org}: {org_error}")
                 continue
 
-        # Calcular meses e CAPREC para todos os registros
-        enriched = calculate_pec66_for_records(records)
-        return enriched
+        # Calcular meses e CAPREC para todos os registros (sempre executar, mesmo se acumulativo falhou)
+        try:
+            enriched = calculate_pec66_for_records(records)
+            return enriched
+        except Exception as calc_error:
+            logger.error(f"Erro ao calcular PEC66 para registros: {calc_error}")
+            return records  # Retornar registros sem cálculos se falhar
 
     except Exception as e:
         logger.error(f"Erro ao enriquecer registros com PEC 66: {e}")
         import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
-        return calculate_pec66_for_records(records)
+        # Sempre tentar calcular meses/CAPREC mesmo em caso de erro
+        try:
+            return calculate_pec66_for_records(records)
+        except:
+            return records  # Retornar registros sem cálculos se tudo falhar
 
 # Função principal para calcular os resultados
 def calculate_pec66_results():
