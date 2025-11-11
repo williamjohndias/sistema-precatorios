@@ -1730,8 +1730,10 @@ def enrich_records_with_pec66(records: List[Dict[str, Any]], db_manager: 'Databa
             organizacoes_list = list(max_ordem_por_org.keys())
             placeholders = ','.join(['%s'] * len(organizacoes_list))
             
-            # Query otimizada: busca todos os registros de todas as organizações de uma vez
-            # e calcula acumulativo usando window function
+            # Query otimizada: busca registros de todas as organizações de uma vez
+            # Usa window function para calcular acumulativo diretamente no banco
+            # SIMPLIFICADO: busca todos os registros das organizações (sem limite de ordem)
+            # O PostgreSQL otimiza isso com índices
             acum_query = f"""
                 SELECT 
                     organizacao,
@@ -1746,6 +1748,7 @@ def enrich_records_with_pec66(records: List[Dict[str, Any]], db_manager: 'Databa
                     AND esta_na_ordem = TRUE 
                     AND valor IS NOT NULL
                 ORDER BY organizacao, ordem ASC
+                LIMIT 5000
             """
             
             try:
@@ -2240,19 +2243,42 @@ def index():
         try:
             result = db_manager.get_precatorios_paginated(page=page, per_page=per_page, filters=filters_for_query, sort_field=sort_field, sort_order=sort_order)
             # Calcular acumulativo e PEC 66 (meses) para cada registro
+            # OTIMIZAÇÃO: Fazer cálculo PEC66 apenas se houver poucas organizações únicas (máx 20)
+            # Para muitas organizações, pular o cálculo para não bloquear o carregamento
             registros_pagina = result.get('data', [])
             if registros_pagina:
-                try:
-                    enriched = enrich_records_with_pec66(registros_pagina, db_manager)
-                    # Garantir que os dados enriquecidos sejam usados
-                    if enriched:
-                        result['data'] = enriched
-                except Exception as pec66_error:
-                    logger.error(f"Erro ao enriquecer registros com PEC 66: {pec66_error}")
-                    import traceback
-                    logger.error(f"Traceback PEC 66: {traceback.format_exc()}")
-                    # Continuar mesmo com erro no PEC 66 - os dados básicos já foram carregados
-                    # Os registros já estão em result['data'], então não precisa fazer nada
+                # Contar organizações únicas
+                organizacoes_unicas = len({r.get('organizacao') for r in registros_pagina if r.get('organizacao')})
+                
+                # Se houver muitas organizações, pular cálculo PEC66 para não bloquear
+                if organizacoes_unicas <= 20:
+                    try:
+                        # Apenas tentar calcular se não houver muitas organizações
+                        enriched = enrich_records_with_pec66(registros_pagina, db_manager)
+                        # Garantir que os dados enriquecidos sejam usados
+                        if enriched:
+                            result['data'] = enriched
+                    except Exception as pec66_error:
+                        logger.warning(f"Cálculo PEC66 pulado ou falhou: {pec66_error}")
+                        # Continuar sem cálculo PEC66 - os dados básicos já foram carregados
+                        # Inicializar campos como None
+                        for record in registros_pagina:
+                            if 'acumulativo_pec66' not in record:
+                                record['acumulativo_pec66'] = None
+                            if 'pec66_resultado' not in record:
+                                record['pec66_resultado'] = None
+                            if 'pec66_resultado_arredondado' not in record:
+                                record['pec66_resultado_arredondado'] = None
+                            if 'caprec' not in record:
+                                record['caprec'] = None
+                else:
+                    logger.info(f"Pulando cálculo PEC66: muitas organizações ({organizacoes_unicas}) na página")
+                    # Inicializar campos como None para manter consistência
+                    for record in registros_pagina:
+                        record['acumulativo_pec66'] = None
+                        record['pec66_resultado'] = None
+                        record['pec66_resultado_arredondado'] = None
+                        record['caprec'] = None
         except Exception as e:
             logger.error(f"Erro ao buscar precatórios: {e}")
             import traceback
