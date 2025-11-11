@@ -1680,30 +1680,34 @@ def enrich_records_with_pec66(records: List[Dict[str, Any]], db_manager: 'Databa
             else:
                 return calculate_pec66_for_records(records)
 
-        conditions = []
+        value_rows = []
         params: List[Any] = []
         for org, max_ordem in max_ordem_por_org.items():
-            conditions.append("(organizacao = %s AND ordem <= %s)")
+            value_rows.append("(%s, %s)")
             params.extend([org, max_ordem])
 
-        if not conditions:
+        if not value_rows:
             return calculate_pec66_for_records(records)
 
-        where_clause = ' OR '.join(conditions)
+        values_clause = ','.join(value_rows)
         acum_query = f"""
+            WITH limites(organizacao, max_ordem) AS (
+                VALUES {values_clause}
+            )
             SELECT
-                organizacao,
-                ordem,
-                SUM(COALESCE(valor, 0)) OVER (
-                    PARTITION BY organizacao
-                    ORDER BY ordem ASC
+                p.organizacao,
+                p.ordem,
+                SUM(COALESCE(p.valor, 0)) OVER (
+                    PARTITION BY p.organizacao
+                    ORDER BY p.ordem ASC
                     ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
                 ) AS acumulativo_pec66
-            FROM {TABLE_NAME}
-            WHERE ({where_clause})
-              AND esta_na_ordem = TRUE
-              AND valor IS NOT NULL
-            ORDER BY organizacao, ordem
+            FROM {TABLE_NAME} p
+            JOIN limites l ON l.organizacao = p.organizacao
+            WHERE p.esta_na_ordem = TRUE
+              AND p.valor IS NOT NULL
+              AND p.ordem <= l.max_ordem
+            ORDER BY p.organizacao, p.ordem
         """
 
         db_manager.cursor.execute(acum_query, params)
