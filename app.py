@@ -1648,13 +1648,18 @@ def enrich_records_with_pec66(records: List[Dict[str, Any]], db_manager: 'Databa
 
     # Inicializar campos para evitar dados residuais
     for record in records:
-        record['acumulativo_pec66'] = None
-        record['pec66_resultado'] = None
-        record['pec66_resultado_arredondado'] = None
-        record['caprec'] = None
+        if 'acumulativo_pec66' not in record:
+            record['acumulativo_pec66'] = None
+        if 'pec66_resultado' not in record:
+            record['pec66_resultado'] = None
+        if 'pec66_resultado_arredondado' not in record:
+            record['pec66_resultado_arredondado'] = None
+        if 'caprec' not in record:
+            record['caprec'] = None
 
     organizacoes = {record.get('organizacao') for record in records if record.get('organizacao')}
     if not organizacoes:
+        logger.warning("Nenhuma organização encontrada nos registros")
         return calculate_pec66_for_records(records)
 
     # Descobrir a maior ordem necessária para cada organização na página atual
@@ -1671,17 +1676,26 @@ def enrich_records_with_pec66(records: List[Dict[str, Any]], db_manager: 'Databa
         max_ordem_por_org[org] = max(max_ordem_por_org.get(org, 0), ordem_int)
 
     if not max_ordem_por_org:
+        logger.warning("Nenhuma ordem válida encontrada nos registros")
         return calculate_pec66_for_records(records)
 
     try:
-        if not db_manager or not db_manager.cursor:
+        # Garantir conexão válida
+        if not db_manager:
+            logger.error("db_manager não está disponível")
             return calculate_pec66_for_records(records)
+        
+        if not db_manager.connection or db_manager.connection.closed:
+            if not db_manager.connect():
+                logger.error("Não foi possível conectar ao banco de dados")
+                return calculate_pec66_for_records(records)
 
         # Garantir que o cursor está disponível
-        if db_manager.cursor.closed:
-            if db_manager.connection and not db_manager.connection.closed:
+        if not db_manager.cursor or db_manager.cursor.closed:
+            try:
                 db_manager.cursor = db_manager.connection.cursor()
-            else:
+            except Exception as e:
+                logger.error(f"Erro ao criar cursor: {e}")
                 return calculate_pec66_for_records(records)
 
         now = datetime.now()
@@ -1730,8 +1744,10 @@ def enrich_records_with_pec66(records: List[Dict[str, Any]], db_manager: 'Databa
                     ORDER BY p.organizacao, p.ordem
                 """
 
+                logger.info(f"Executando query para {len(to_fetch)} organizações: {list(to_fetch.keys())[:5]}")
                 db_manager.cursor.execute(acum_query, params)
                 acum_rows = db_manager.cursor.fetchall()
+                logger.info(f"Query retornou {len(acum_rows)} linhas de acumulativos")
 
                 fetched: Dict[str, Dict[int, Optional[float]]] = defaultdict(dict)
                 for row in acum_rows:
@@ -1749,6 +1765,8 @@ def enrich_records_with_pec66(records: List[Dict[str, Any]], db_manager: 'Databa
                     except (ValueError, TypeError):
                         acumulativo_float = None
                     fetched[org][ordem_int] = acumulativo_float
+                
+                logger.info(f"Processados acumulativos para {len(fetched)} organizações")
 
                 for org, dados in fetched.items():
                     if dados:
@@ -1772,6 +1790,7 @@ def enrich_records_with_pec66(records: List[Dict[str, Any]], db_manager: 'Databa
                         _pec66_cache_timestamp[org] = now
 
         # Atribuir acumulativos aos registros
+        atribuidos = 0
         for record in records:
             org = record.get('organizacao')
             ordem = record.get('ordem')
@@ -1783,12 +1802,18 @@ def enrich_records_with_pec66(records: List[Dict[str, Any]], db_manager: 'Databa
                 continue
             acumulativo = acumulativos_por_org.get(org, {}).get(ordem_int)
             record['acumulativo_pec66'] = acumulativo
-            # Log para debug (apenas primeiros 3 registros)
-            if len([r for r in records if r.get('organizacao') == org]) <= 3:
+            if acumulativo is not None:
+                atribuidos += 1
+            # Log para debug (apenas primeiros 5 registros)
+            if atribuidos <= 5:
                 logger.info(f"Atribuído acumulativo para {org} ordem {ordem_int}: {acumulativo}")
+        
+        logger.info(f"Total de {atribuidos} acumulativos atribuídos de {len(records)} registros")
 
         # Calcular meses e CAPREC
+        logger.info("Chamando calculate_pec66_for_records para calcular meses e CAPREC")
         enriched = calculate_pec66_for_records(records)
+        logger.info(f"Enriquecimento concluído. Primeiro registro: acumulativo={enriched[0].get('acumulativo_pec66') if enriched else 'N/A'}, meses={enriched[0].get('pec66_resultado_arredondado') if enriched else 'N/A'}, caprec={enriched[0].get('caprec') if enriched else 'N/A'}")
         return enriched
 
     except Exception as e:
