@@ -29,7 +29,17 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Configuração do Flask otimizada para Vercel
-app = Flask(__name__)
+# Configurar caminhos absolutos para templates e static quando executado via api/index.py
+from pathlib import Path
+
+# Obter o diretório base do projeto (raiz do workspace)
+base_dir = Path(__file__).parent.absolute()
+
+app = Flask(
+    __name__,
+    template_folder=str(base_dir / 'templates'),
+    static_folder=str(base_dir / 'static')
+)
 app.secret_key = os.environ.get('SECRET_KEY', 'sua_chave_secreta_aqui')
 ADMIN_TOKEN = os.environ.get('ADMIN_TOKEN', 'admin')
 
@@ -86,13 +96,13 @@ class DatabaseManager:
             # Configurações otimizadas para Vercel
             conn_params = DB_CONFIG.copy()
             conn_params.update({
-                'connect_timeout': 15,  # Timeout aumentado para conexão mais estável
+                'connect_timeout': 10,  # Timeout reduzido para falhar mais rápido se houver problema
                 'application_name': 'precatorios_vercel',
-                'keepalives_idle': 600,  # Aumentado para manter conexão
+                'keepalives_idle': 300,  # Reduzido para detectar desconexões mais rápido
                 'keepalives_interval': 30,  # Intervalo razoável
-                'keepalives_count': 5,  # Mais tentativas antes de desistir
-                # Timeouts otimizados para queries com paginação e índices
-                'options': '-c statement_timeout=30000 -c idle_in_transaction_session_timeout=30000 -c lock_timeout=5000'
+                'keepalives_count': 3,  # Menos tentativas para falhar mais rápido
+                # Timeouts otimizados para queries com paginação e índices (reduzido para primeira carga)
+                'options': '-c statement_timeout=20000 -c idle_in_transaction_session_timeout=20000 -c lock_timeout=3000'
             })
             
             logger.info(f"Tentando conectar ao banco: {conn_params['host']}:{conn_params['port']}")
@@ -170,9 +180,9 @@ class DatabaseManager:
     def get_precatorios_paginated(self, page: int = 1, per_page: int = 50, filters: Dict[str, str] = None, sort_field: str = 'ordem', sort_order: str = 'asc') -> Dict[str, Any]:
         """Obtém precatórios com paginação, filtros e ordenação - otimizado para Vercel"""
         try:
-            # Timeout de 30 segundos é suficiente com paginação e índices
+            # Timeout de 20 segundos para queries mais rápidas (reduzido de 30s)
             try:
-                self.cursor.execute("SET statement_timeout TO 30000")
+                self.cursor.execute("SET statement_timeout TO 20000")
             except Exception:
                 pass
             # Campos específicos solicitados (ordenados conforme especificação)
@@ -1342,16 +1352,26 @@ def load_teto_repasse_from_csv(csv_path='cálculo.csv'):
                     teto_mensal = teto_value / 12
                     
                     # Armazenar por diferentes chaves para facilitar matching
-                    # Prioridade: chaves com estado primeiro (mais específicas)
+                    # Prioridade: SEMPRE usar "Ente Devedor - Estado" como chave principal
                     keys_to_store = []
                     
-                    # 1. Chave principal: "Município - Estado" (se estado disponível)
-                    if estado:
-                        keys_to_store.append(f"{municipio} - {estado}")
-                        keys_to_store.append(f"{municipio}/{estado}")
+                    # Normalizar estado (remover espaços, converter para maiúsculas)
+                    estado_clean = estado.strip().upper() if estado else None
+                    municipio_clean = municipio.strip()
                     
-                    # 2. Apenas município (fallback)
-                    keys_to_store.append(municipio)
+                    # 1. Chave principal: "Município - Estado" (SEMPRE criar se estado disponível)
+                    if estado_clean:
+                        # Formato principal: "Município - Estado"
+                        key_principal = f"{municipio_clean} - {estado_clean}"
+                        keys_to_store.append(key_principal)
+                        # Formato alternativo: "Município/Estado"
+                        keys_to_store.append(f"{municipio_clean}/{estado_clean}")
+                        # Formato alternativo: "Município - Estado" (minúsculas)
+                        keys_to_store.append(f"{municipio_clean.lower()} - {estado_clean.lower()}")
+                    
+                    # 2. Apenas município (fallback para casos sem estado)
+                    keys_to_store.append(municipio_clean)
+                    keys_to_store.append(municipio_clean.lower())
                     
                     # 3. Normalizações (sem acentos/pontuação) para todas as chaves
                     normalized_keys = []
@@ -1365,6 +1385,10 @@ def load_teto_repasse_from_csv(csv_path='cálculo.csv'):
                     for key in all_keys:
                         if key:  # Só armazenar se a chave não estiver vazia
                             teto_dict[key] = teto_mensal
+                            
+                    # Log para debug (apenas primeiras 5 linhas)
+                    if processed_count <= 5:
+                        logger.info(f"CSV linha {row_count}: '{municipio_clean}' ({estado_clean}) -> teto_mensal={teto_mensal:.2f}, chaves criadas: {len(all_keys)}")
                 except (ValueError, TypeError) as e:
                     logger.warning(f"Erro ao processar teto para {municipio}: {teto_str} - {e}")
                     continue
@@ -1535,40 +1559,47 @@ def calculate_pec66_for_records(records):
         if ' - ' in municipio_org:
             parts = municipio_org.split(' - ', 1)
             municipio_org = parts[0].strip()
-            estado_org = parts[1].strip() if len(parts) > 1 else None
+            estado_org = parts[1].strip().upper() if len(parts) > 1 else None  # Normalizar para maiúsculas
         elif '/' in municipio_org:
             parts = municipio_org.split('/', 1)
             municipio_org = parts[0].strip()
-            estado_org = parts[1].strip() if len(parts) > 1 else None
+            estado_org = parts[1].strip().upper() if len(parts) > 1 else None  # Normalizar para maiúsculas
         
         # Tentar diferentes chaves de busca (prioridade: mais específico primeiro)
         teto_mensal = None
         search_keys = []
         
-        # 1. Match exato com estado (se disponível)
+        # 1. Match exato com estado (PRIORIDADE MÁXIMA - formato do CSV)
         if estado_org:
+            # Formato principal do CSV: "Município - Estado"
             search_keys.append(f"{municipio_org} - {estado_org}")
+            # Formato alternativo: "Município/Estado"
             search_keys.append(f"{municipio_org}/{estado_org}")
+            # Versões em minúsculas
+            search_keys.append(f"{municipio_org.lower()} - {estado_org.lower()}")
+            search_keys.append(f"{municipio_org.lower()}/{estado_org.lower()}")
         
-        # 2. Match apenas com município
+        # 2. Match apenas com município (fallback)
         search_keys.append(municipio_org)
+        search_keys.append(municipio_org.lower())
         
-        # 3. Versões normalizadas
-        for key in search_keys:
+        # 3. Versões normalizadas (sem acentos)
+        for key in list(search_keys):  # Usar cópia da lista
             normalized = normalize_text(key)
-            if normalized:
+            if normalized and normalized not in search_keys:
                 search_keys.append(normalized)
         
-        # 4. Organização completa original
+        # 4. Organização completa original (última tentativa)
         search_keys.append(organizacao)
+        search_keys.append(organizacao.lower())
         search_keys.append(normalize_text(organizacao))
         
-        # Tentar encontrar nas chaves
+        # Tentar encontrar nas chaves (ordem de prioridade)
         for key in search_keys:
             if key in teto_dict:
                 teto_mensal = teto_dict[key]
                 if idx < 3:  # Log apenas para os primeiros 3 registros
-                    logger.info(f"Match encontrado para '{organizacao}': chave '{key}' -> teto_mensal={teto_mensal}")
+                    logger.info(f"✓ Match encontrado para '{organizacao}': chave '{key}' -> teto_mensal={teto_mensal:.2f}")
                 break
         
         # Se ainda não encontrou, tentar busca por nome similar (fallback)
@@ -1964,16 +1995,16 @@ def index():
             page = 1
             
         try:
-            # Paginação: 500 registros por página
+            # Paginação: 200 registros por página (reduzido para carregamento mais rápido)
             # Usuário pode aumentar se necessário via parâmetro per_page
-            per_page = int(request.args.get('per_page', 500))
+            per_page = int(request.args.get('per_page', 200))
             if per_page < 1:
-                per_page = 500
-            # Limite máximo de 2000 por página para manter boa performance
-            if per_page > 2000:
-                per_page = 2000
+                per_page = 200
+            # Limite máximo de 1000 por página para manter boa performance
+            if per_page > 1000:
+                per_page = 1000
         except (ValueError, TypeError):
-            per_page = 500
+            per_page = 200
         
         # Parâmetros de ordenação (padrão: ordenar pela coluna 'ordem')
         sort_field = request.args.get('sort', 'ordem')
@@ -2081,10 +2112,12 @@ def index():
             'ano_orc': []
         }
         
-        # ORGANIZAÇÃO: Carregar TODAS (sem limite) - sempre mostra todas as organizações do banco
+        # ORGANIZAÇÃO: Carregar com limite inicial para performance (carregar mais via AJAX se necessário)
         try:
-            filter_values['organizacao'] = db_manager.get_filter_values('organizacao', use_cache=True, limit_count=None, active_filters=None)
-            logger.info(f"Organização carregada: {len(filter_values['organizacao'])} valores (TODAS)")
+            # Limitar a 200 organizações inicialmente para carregamento rápido
+            # O usuário pode buscar mais via API se necessário
+            filter_values['organizacao'] = db_manager.get_filter_values('organizacao', use_cache=True, limit_count=200, active_filters=None)
+            logger.info(f"Organização carregada: {len(filter_values['organizacao'])} valores (limitado a 200 para performance)")
         except Exception as e:
             logger.warning(f"Erro ao carregar organização: {e}")
             filter_values['organizacao'] = []
@@ -2104,14 +2137,16 @@ def index():
         for field in other_fields:
             try:
                 # Se há filtro de organização, usar ele para filtrar dinamicamente
-                # Caso contrário, carregar todos os valores
+                # Caso contrário, carregar valores com cache (mais rápido)
+                # Limitar quantidade para melhor performance inicial
+                limit = 500 if field == 'ano_orc' else None  # Limitar anos se muitos
                 filter_values[field] = db_manager.get_filter_values(
                     field, 
-                    use_cache=not bool(active_filters_for_dynamic), 
-                    limit_count=None,
+                    use_cache=True,  # Sempre usar cache quando possível
+                    limit_count=limit,
                     active_filters=active_filters_for_dynamic if active_filters_for_dynamic else None
                 )
-                logger.info(f"Filtro {field} carregado: {len(filter_values[field])} valores (dinâmico: {bool(active_filters_for_dynamic)})")
+                logger.info(f"Filtro {field} carregado: {len(filter_values[field])} valores (cache: True)")
             except Exception as e:
                 logger.warning(f"Erro ao carregar {field}: {e}")
                 filter_values[field] = []
@@ -2154,14 +2189,13 @@ def index():
                     record['pec66_resultado_arredondado'] = None
                     record['caprec'] = None
                 
-                # Sempre tentar calcular PEC66, mas limitar processamento interno se houver muitas organizações
+                # Sempre calcular PEC66 (acumulativo, meses e CAPREC) para todos os registros
+                # A função já está otimizada para calcular apenas os registros da página atual
                 try:
-                    # Tentar calcular PEC66 - a função interna já tem limites de otimização
                     enriched = enrich_records_with_pec66(registros_pagina, db_manager)
-                    # Garantir que os dados enriquecidos sejam usados
                     if enriched:
                         result['data'] = enriched
-                        logger.info(f"Cálculo PEC66 concluído para {len(enriched)} registros")
+                        logger.info(f"Cálculo PEC66 concluído para {len(enriched)} registros ({organizacoes_unicas} orgs)")
                     else:
                         logger.warning("enrich_records_with_pec66 retornou lista vazia")
                 except Exception as pec66_error:
