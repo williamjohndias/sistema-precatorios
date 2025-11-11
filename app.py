@@ -1732,7 +1732,6 @@ def enrich_records_with_pec66(records: List[Dict[str, Any]], db_manager: 'Databa
             
             # Query otimizada: busca registros de todas as organizações de uma vez
             # Usa window function para calcular acumulativo diretamente no banco
-            # SIMPLIFICADO: busca todos os registros das organizações (sem limite de ordem)
             # O PostgreSQL otimiza isso com índices
             acum_query = f"""
                 SELECT 
@@ -1748,12 +1747,13 @@ def enrich_records_with_pec66(records: List[Dict[str, Any]], db_manager: 'Databa
                     AND esta_na_ordem = TRUE 
                     AND valor IS NOT NULL
                 ORDER BY organizacao, ordem ASC
-                LIMIT 5000
             """
             
             try:
+                logger.info(f"Executando query de acumulativos para {len(organizacoes_list)} organizações")
                 db_manager.cursor.execute(acum_query, organizacoes_list)
                 all_rows = db_manager.cursor.fetchall()
+                logger.info(f"Query retornou {len(all_rows)} linhas de acumulativos")
             except (ProgrammingError, Exception) as fetch_error:
                 error_str = str(fetch_error).lower()
                 if ('no results to fetch' in error_str or 
@@ -1782,15 +1782,22 @@ def enrich_records_with_pec66(records: List[Dict[str, Any]], db_manager: 'Databa
                     pass
 
             # Atribuir acumulativos aos registros da página atual
+            atribuidos_count = 0
             for org, records_org in organizacoes_dict.items():
+                org_acumulativos = acumulativos_por_org.get(org, {})
                 for record in records_org:
                     ordem = record.get('ordem')
                     if ordem is not None:
                         try:
                             ordem_int = int(ordem)
-                            record['acumulativo_pec66'] = acumulativos_por_org.get(org, {}).get(ordem_int)
+                            acumulativo = org_acumulativos.get(ordem_int)
+                            record['acumulativo_pec66'] = acumulativo
+                            if acumulativo is not None:
+                                atribuidos_count += 1
                         except (ValueError, TypeError):
                             pass
+            
+            logger.info(f"Atribuídos {atribuidos_count} acumulativos de {len(records)} registros. Organizações processadas: {len(acumulativos_por_org)}")
 
         except Exception as e:
             logger.error(f"Erro ao calcular acumulativos otimizado: {e}")
@@ -2243,42 +2250,29 @@ def index():
         try:
             result = db_manager.get_precatorios_paginated(page=page, per_page=per_page, filters=filters_for_query, sort_field=sort_field, sort_order=sort_order)
             # Calcular acumulativo e PEC 66 (meses) para cada registro
-            # OTIMIZAÇÃO: Fazer cálculo PEC66 apenas se houver poucas organizações únicas (máx 20)
-            # Para muitas organizações, pular o cálculo para não bloquear o carregamento
             registros_pagina = result.get('data', [])
             if registros_pagina:
-                # Contar organizações únicas
-                organizacoes_unicas = len({r.get('organizacao') for r in registros_pagina if r.get('organizacao')})
-                
-                # Se houver muitas organizações, pular cálculo PEC66 para não bloquear
-                if organizacoes_unicas <= 20:
-                    try:
-                        # Apenas tentar calcular se não houver muitas organizações
-                        enriched = enrich_records_with_pec66(registros_pagina, db_manager)
-                        # Garantir que os dados enriquecidos sejam usados
-                        if enriched:
-                            result['data'] = enriched
-                    except Exception as pec66_error:
-                        logger.warning(f"Cálculo PEC66 pulado ou falhou: {pec66_error}")
-                        # Continuar sem cálculo PEC66 - os dados básicos já foram carregados
-                        # Inicializar campos como None
-                        for record in registros_pagina:
-                            if 'acumulativo_pec66' not in record:
-                                record['acumulativo_pec66'] = None
-                            if 'pec66_resultado' not in record:
-                                record['pec66_resultado'] = None
-                            if 'pec66_resultado_arredondado' not in record:
-                                record['pec66_resultado_arredondado'] = None
-                            if 'caprec' not in record:
-                                record['caprec'] = None
-                else:
-                    logger.info(f"Pulando cálculo PEC66: muitas organizações ({organizacoes_unicas}) na página")
-                    # Inicializar campos como None para manter consistência
+                try:
+                    # Sempre tentar calcular PEC66 - a query otimizada deve ser rápida
+                    enriched = enrich_records_with_pec66(registros_pagina, db_manager)
+                    # Garantir que os dados enriquecidos sejam usados
+                    if enriched:
+                        result['data'] = enriched
+                except Exception as pec66_error:
+                    logger.warning(f"Cálculo PEC66 falhou: {pec66_error}")
+                    import traceback
+                    logger.warning(f"Traceback PEC66: {traceback.format_exc()}")
+                    # Continuar sem cálculo PEC66 - os dados básicos já foram carregados
+                    # Inicializar campos como None
                     for record in registros_pagina:
-                        record['acumulativo_pec66'] = None
-                        record['pec66_resultado'] = None
-                        record['pec66_resultado_arredondado'] = None
-                        record['caprec'] = None
+                        if 'acumulativo_pec66' not in record:
+                            record['acumulativo_pec66'] = None
+                        if 'pec66_resultado' not in record:
+                            record['pec66_resultado'] = None
+                        if 'pec66_resultado_arredondado' not in record:
+                            record['pec66_resultado_arredondado'] = None
+                        if 'caprec' not in record:
+                            record['caprec'] = None
         except Exception as e:
             logger.error(f"Erro ao buscar precatórios: {e}")
             import traceback
