@@ -2096,12 +2096,21 @@ def index():
         esta_na_ordem_param = request.args.get('filter_esta_na_ordem', None)
         if esta_na_ordem_param is not None:
             # O parâmetro foi enviado (usuário interagiu com o filtro)
-            if esta_na_ordem_param.strip() == '':
+            esta_na_ordem_value = esta_na_ordem_param.strip()
+            if esta_na_ordem_value == '':
                 # Usuário selecionou "Todos" - não aplicar filtro
-                pass  # Não adicionar ao filters, mostrar todos
+                # Remover do filters se existir
+                if 'esta_na_ordem' in filters:
+                    del filters['esta_na_ordem']
+            elif esta_na_ordem_value.upper() in ('SIM', 'S', 'YES', 'Y', 'TRUE', '1'):
+                # Usuário selecionou "SIM"
+                filters['esta_na_ordem'] = 'SIM'
+            elif esta_na_ordem_value.upper() in ('NAO', 'NÃO', 'NO', 'N', 'FALSE', '0'):
+                # Usuário selecionou "NÃO"
+                filters['esta_na_ordem'] = 'NAO'
             else:
-                # Usuário selecionou "Sim" ou "Não" - já está em filters
-                pass
+                # Valor inválido - aplicar padrão
+                filters['esta_na_ordem'] = 'SIM'
         else:
             # Parâmetro não foi enviado (primeira carga ou não interagiu) - aplicar padrão
             filters['esta_na_ordem'] = 'SIM'
@@ -2243,6 +2252,7 @@ def index():
             {'name': 'ano_orc', 'label': 'Ano Orçamentário', 'type': 'integer', 'editable': False, 'visible': True},
             {'name': 'situacao', 'label': 'Situação', 'type': 'character varying', 'editable': True, 'visible': True},
             {'name': 'valor', 'label': 'Valor', 'type': 'numeric', 'editable': True, 'visible': True},
+            {'name': 'esta_na_ordem', 'label': 'Está na Ordem', 'type': 'boolean', 'editable': False, 'visible': True},
             {'name': 'acumulativo_pec66', 'label': 'Valor Acumulado', 'type': 'numeric', 'editable': False, 'visible': True},
             {'name': 'pec66_resultado_arredondado', 'label': 'Meses', 'type': 'numeric', 'editable': False, 'visible': True},
             {'name': 'caprec', 'label': 'CAPREC', 'type': 'character varying', 'editable': False, 'visible': True},
