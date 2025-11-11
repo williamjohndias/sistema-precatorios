@@ -19,6 +19,7 @@ import csv
 from collections import defaultdict
 import unicodedata
 import math
+from typing import Dict, List, Any, Optional
 
 # Configurar logging otimizado para Vercel
 logging.basicConfig(
@@ -71,7 +72,6 @@ def get_brazil_time():
     return datetime.now(brazil_tz)
 
 import copy
-from typing import Dict, List, Any, Optional
 
 class DatabaseManager:
     """Gerenciador de conexão com banco de dados otimizado para Vercel"""
@@ -1630,8 +1630,118 @@ def calculate_pec66_for_records(records):
                 logger.warning(f"Não foi possível encontrar teto_mensal para '{organizacao}' (teto_mensal={teto_mensal})")
             record['pec66_resultado'] = None
             record['pec66_resultado_arredondado'] = None
-    
+
     return records
+
+
+def enrich_records_with_pec66(records: List[Dict[str, Any]], db_manager: 'DatabaseManager') -> List[Dict[str, Any]]:
+    """
+    Popula os campos relacionados ao PEC 66 (acumulativo, meses e CAPREC) de forma otimizada.
+    Executa uma única consulta por lote de organizações ao invés de iterar individualmente.
+    """
+    if not records:
+        return records
+
+    # Inicializar campos para evitar dados residuais
+    for record in records:
+        record['acumulativo_pec66'] = None
+        record['pec66_resultado'] = None
+        record['pec66_resultado_arredondado'] = None
+        record['caprec'] = None
+
+    organizacoes = {record.get('organizacao') for record in records if record.get('organizacao')}
+    if not organizacoes:
+        return calculate_pec66_for_records(records)
+
+    # Descobrir a maior ordem necessária para cada organização na página atual
+    max_ordem_por_org: Dict[str, int] = {}
+    for record in records:
+        org = record.get('organizacao')
+        ordem = record.get('ordem')
+        if org is None or ordem is None:
+            continue
+        try:
+            ordem_int = int(ordem)
+        except (ValueError, TypeError):
+            continue
+        max_ordem_por_org[org] = max(max_ordem_por_org.get(org, 0), ordem_int)
+
+    if not max_ordem_por_org:
+        return calculate_pec66_for_records(records)
+
+    try:
+        if not db_manager or not db_manager.cursor:
+            return calculate_pec66_for_records(records)
+
+        # Garantir que o cursor está disponível
+        if db_manager.cursor.closed:
+            if db_manager.connection and not db_manager.connection.closed:
+                db_manager.cursor = db_manager.connection.cursor()
+            else:
+                return calculate_pec66_for_records(records)
+
+        conditions = []
+        params: List[Any] = []
+        for org, max_ordem in max_ordem_por_org.items():
+            conditions.append("(organizacao = %s AND ordem <= %s)")
+            params.extend([org, max_ordem])
+
+        if not conditions:
+            return calculate_pec66_for_records(records)
+
+        where_clause = ' OR '.join(conditions)
+        acum_query = f"""
+            SELECT
+                organizacao,
+                ordem,
+                SUM(COALESCE(valor, 0)) OVER (
+                    PARTITION BY organizacao
+                    ORDER BY ordem ASC
+                    ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+                ) AS acumulativo_pec66
+            FROM {TABLE_NAME}
+            WHERE ({where_clause})
+              AND esta_na_ordem = TRUE
+              AND valor IS NOT NULL
+            ORDER BY organizacao, ordem
+        """
+
+        db_manager.cursor.execute(acum_query, params)
+        acum_rows = db_manager.cursor.fetchall()
+
+        acumulativos_por_org: Dict[str, Dict[int, Optional[float]]] = defaultdict(dict)
+        for row in acum_rows:
+            org = row.get('organizacao')
+            ordem = row.get('ordem')
+            acumulativo = row.get('acumulativo_pec66')
+            if org is None or ordem is None:
+                continue
+            try:
+                ordem_int = int(ordem)
+            except (ValueError, TypeError):
+                continue
+            try:
+                acumulativo_float = float(acumulativo) if acumulativo is not None else None
+            except (ValueError, TypeError):
+                acumulativo_float = None
+            acumulativos_por_org[org][ordem_int] = acumulativo_float
+
+        for record in records:
+            org = record.get('organizacao')
+            ordem = record.get('ordem')
+            if org is None or ordem is None:
+                continue
+            try:
+                ordem_int = int(ordem)
+            except (ValueError, TypeError):
+                continue
+            record['acumulativo_pec66'] = acumulativos_por_org.get(org, {}).get(ordem_int)
+
+        return calculate_pec66_for_records(records)
+
+    except Exception as e:
+        logger.error(f"Erro ao enriquecer registros com PEC 66: {e}")
+        return calculate_pec66_for_records(records)
 
 # Função principal para calcular os resultados
 def calculate_pec66_results():
@@ -2022,232 +2132,9 @@ def index():
         try:
             result = db_manager.get_precatorios_paginated(page=page, per_page=per_page, filters=filters_for_query, sort_field=sort_field, sort_order=sort_order)
             # Calcular acumulativo e PEC 66 (meses) para cada registro
-            if result.get('data') and len(result['data']) > 0:
-                try:
-                    # Agrupar registros por organização
-                    organizacoes_dict = {}
-                    for record in result['data']:
-                        org = record.get('organizacao')
-                        if org:
-                            if org not in organizacoes_dict:
-                                organizacoes_dict[org] = []
-                            organizacoes_dict[org].append(record)
-                    
-                    # Para cada organização, buscar todos os registros ordenados por ordem
-                    # e calcular acumulativo
-                    teto_dict = get_teto_dict()
-                    
-                    for org, records_page in organizacoes_dict.items():
-                        # Buscar todos os registros desta organização do banco (ordenados por ordem)
-                        if db_manager.cursor:
-                            try:
-                                # Verificar se cursor está válido antes de usar
-                                if db_manager.cursor.closed:
-                                    # Tentar recriar cursor se estiver fechado
-                                    try:
-                                        if db_manager.connection and not db_manager.connection.closed:
-                                            db_manager.cursor = db_manager.connection.cursor()
-                                        else:
-                                            # Se conexão também estiver fechada, pular esta organização
-                                            for record in records_page:
-                                                record['acumulativo_pec66'] = None
-                                                record['pec66_resultado'] = None
-                                                record['pec66_resultado_arredondado'] = None
-                                                record['caprec'] = None
-                                            continue
-                                    except Exception:
-                                        # Se não conseguir recriar cursor, pular esta organização
-                                        for record in records_page:
-                                            record['acumulativo_pec66'] = None
-                                            record['pec66_resultado'] = None
-                                            record['pec66_resultado_arredondado'] = None
-                                            record['caprec'] = None
-                                        continue
-                                
-                                acum_query = f"""
-                                    SELECT ordem, valor
-                                    FROM {TABLE_NAME}
-                                    WHERE organizacao = %s 
-                                        AND esta_na_ordem = TRUE 
-                                        AND valor IS NOT NULL
-                                    ORDER BY ordem ASC
-                                """
-                                db_manager.cursor.execute(acum_query, (org,))
-                                
-                                # Buscar resultados de forma segura
-                                all_records_org = []
-                                try:
-                                    # Tentar buscar todos os resultados
-                                    all_records_org = db_manager.cursor.fetchall()
-                                except (ProgrammingError, Exception) as fetch_error:
-                                    # Se "no results to fetch" ou erro de programação relacionado, tratar como lista vazia
-                                    error_str = str(fetch_error).lower()
-                                    error_msg = str(fetch_error)
-                                    
-                                    # Verificar se é um erro de "sem resultados" (situação normal)
-                                    if ('no results to fetch' in error_str or 
-                                        'no results' in error_str or
-                                        'no row' in error_str or
-                                        'result has already been consumed' in error_str):
-                                        # Não há resultados ou cursor já foi consumido, tratar como lista vazia
-                                        all_records_org = []
-                                    else:
-                                        # Outro tipo de erro, verificar se é erro de cursor
-                                        if isinstance(fetch_error, ProgrammingError):
-                                            # Erro de programação, provavelmente cursor já usado
-                                            all_records_org = []
-                                        else:
-                                            # Erro real, re-lançar apenas se for crítico
-                                            # Para a maioria dos casos, tratar como lista vazia
-                                            all_records_org = []
-                                
-                                # Calcular acumulativo progressivo
-                                acumulativo_dict = {}  # ordem -> acumulativo
-                                acumulativo = 0.0
-                                
-                                for row in all_records_org:
-                                    ordem = row.get('ordem')
-                                    valor = row.get('valor')
-                                    if ordem is not None and valor is not None:
-                                        try:
-                                            valor_float = float(valor) if isinstance(valor, (int, float)) else float(str(valor).replace(',', '.'))
-                                            acumulativo += valor_float
-                                            acumulativo_dict[int(ordem)] = acumulativo
-                                        except (ValueError, TypeError):
-                                            pass
-                                
-                                # Adicionar acumulativo aos registros da página atual
-                                for record in records_page:
-                                    ordem = record.get('ordem')
-                                    if ordem is not None:
-                                        try:
-                                            ordem_int = int(ordem)
-                                            record['acumulativo_pec66'] = acumulativo_dict.get(ordem_int)
-                                            
-                                            # Calcular meses (acumulativo / teto_mensal)
-                                            if record['acumulativo_pec66'] is not None:
-                                                # Buscar teto mensal do CSV
-                                                teto_mensal = None
-                                                
-                                                # Extrair município e estado
-                                                municipio_org = org.strip()
-                                                estado_org = None
-                                                
-                                                if ' - ' in municipio_org:
-                                                    parts = municipio_org.split(' - ', 1)
-                                                    municipio_org = parts[0].strip()
-                                                    estado_org = parts[1].strip() if len(parts) > 1 else None
-                                                
-                                                # Tentar diferentes chaves
-                                                search_keys = []
-                                                if estado_org:
-                                                    search_keys.append(f"{municipio_org} - {estado_org}")
-                                                    search_keys.append(f"{municipio_org}/{estado_org}")
-                                                search_keys.append(municipio_org)
-                                                
-                                                for key in search_keys:
-                                                    if key in teto_dict:
-                                                        teto_mensal = teto_dict[key]
-                                                        break
-                                                
-                                                # Se não encontrou, tentar busca por similaridade
-                                                if teto_mensal is None and teto_dict:
-                                                    municipio_lower = municipio_org.lower()
-                                                    for csv_key, csv_teto in teto_dict.items():
-                                                        if municipio_lower in csv_key.lower() or csv_key.lower() in municipio_lower:
-                                                            if estado_org and estado_org.lower() in csv_key.lower():
-                                                                teto_mensal = csv_teto
-                                                                break
-                                                            elif not estado_org:
-                                                                teto_mensal = csv_teto
-                                                                break
-                                                
-                                                # Calcular meses (acumulativo / teto_mensal)
-                                                if teto_mensal and teto_mensal > 0:
-                                                    meses = record['acumulativo_pec66'] / teto_mensal
-                                                    record['pec66_resultado'] = meses
-                                                    # Arredondar para cima (sempre para o próximo mês inteiro)
-                                                    record['pec66_resultado_arredondado'] = math.ceil(meses)
-                                                    # Calcular CAPREC baseado nos meses arredondados
-                                                    record['caprec'] = calculate_caprec(record['pec66_resultado_arredondado'])
-                                                else:
-                                                    record['pec66_resultado'] = None
-                                                    record['pec66_resultado_arredondado'] = None
-                                                    record['caprec'] = None
-                                            else:
-                                                record['pec66_resultado'] = None
-                                                record['pec66_resultado_arredondado'] = None
-                                                record['caprec'] = None
-                                        except (ValueError, TypeError):
-                                            record['acumulativo_pec66'] = None
-                                            record['pec66_resultado'] = None
-                                            record['pec66_resultado_arredondado'] = None
-                                            record['caprec'] = None
-                                    else:
-                                        record['acumulativo_pec66'] = None
-                                        record['pec66_resultado'] = None
-                                        record['pec66_resultado_arredondado'] = None
-                                        record['caprec'] = None
-                            except (ProgrammingError, Exception) as acum_error:
-                                # Verificar se é um erro real ou apenas "sem resultados"
-                                error_str = str(acum_error).lower()
-                                error_msg = str(acum_error)
-                                
-                                # Lista de erros que são normais (não devem ser logados como warning)
-                                normal_errors = [
-                                    'no results to fetch',
-                                    'no results',
-                                    'no row',
-                                    'result has already been consumed',
-                                    'cursor',
-                                    'closed'
-                                ]
-                                
-                                is_normal_error = any(normal_err in error_str for normal_err in normal_errors)
-                                
-                                if is_normal_error or isinstance(acum_error, ProgrammingError):
-                                    # Não há resultados ou erro de cursor (situação normal)
-                                    # Não logar como warning, apenas inicializar como None
-                                    for record in records_page:
-                                        record['acumulativo_pec66'] = None
-                                        record['pec66_resultado'] = None
-                                        record['pec66_resultado_arredondado'] = None
-                                        record['caprec'] = None
-                                else:
-                                    # Erro real e crítico, logar como warning
-                                    logger.warning(f"Erro ao calcular acumulativo para {org}: {acum_error}")
-                                    # Inicializar como None em caso de erro
-                                    for record in records_page:
-                                        record['acumulativo_pec66'] = None
-                                        record['pec66_resultado'] = None
-                                        record['pec66_resultado_arredondado'] = None
-                                        record['caprec'] = None
-                        else:
-                            # Se não houver cursor, inicializar como None
-                            for record in records_page:
-                                record['acumulativo_pec66'] = None
-                                record['pec66_resultado'] = None
-                                record['pec66_resultado_arredondado'] = None
-                                record['caprec'] = None
-                    
-                    # Para registros sem organização, inicializar como None
-                    for record in result['data']:
-                        if not record.get('organizacao'):
-                            record['acumulativo_pec66'] = None
-                            record['pec66_resultado'] = None
-                            record['pec66_resultado_arredondado'] = None
-                            record['caprec'] = None
-                            
-                except Exception as pec66_error:
-                    logger.error(f"Erro ao calcular PEC 66: {pec66_error}")
-                    import traceback
-                    logger.error(f"Traceback PEC 66: {traceback.format_exc()}")
-                    # Inicializar como None em caso de erro
-                    for record in result.get('data', []):
-                        record['acumulativo_pec66'] = None
-                        record['pec66_resultado'] = None
-                        record['pec66_resultado_arredondado'] = None
-                        record['caprec'] = None
+            registros_pagina = result.get('data', [])
+            if registros_pagina:
+                enrich_records_with_pec66(registros_pagina, db_manager)
         except Exception as e:
             logger.error(f"Erro ao buscar precatórios: {e}")
             import traceback
@@ -2265,7 +2152,7 @@ def index():
                     'prev_num': None,
                     'next_num': None
                 }
-        }
+            }
         
         # max_valor já foi obtido anteriormente (não buscar novamente)
         
@@ -2718,197 +2605,7 @@ def export_csv():
         # Calcular PEC 66 e CAPREC para todos os registros (mesma lógica da rota index)
         if records:
             try:
-                # Agrupar registros por organização
-                organizacoes_dict = {}
-                for record in records:
-                    org = record.get('organizacao')
-                    if org:
-                        if org not in organizacoes_dict:
-                            organizacoes_dict[org] = []
-                        organizacoes_dict[org].append(record)
-                
-                # Para cada organização, buscar todos os registros ordenados por ordem
-                teto_dict = get_teto_dict()
-                
-                for org, records_org in organizacoes_dict.items():
-                    if db_manager.cursor:
-                        try:
-                            # Verificar se cursor está válido antes de usar
-                            if db_manager.cursor.closed:
-                                # Tentar recriar cursor se estiver fechado
-                                try:
-                                    if db_manager.connection and not db_manager.connection.closed:
-                                        db_manager.cursor = db_manager.connection.cursor()
-                                    else:
-                                        # Se conexão também estiver fechada, pular esta organização
-                                        for record in records_org:
-                                            record['acumulativo_pec66'] = None
-                                            record['pec66_resultado'] = None
-                                            record['pec66_resultado_arredondado'] = None
-                                            record['caprec'] = None
-                                        continue
-                                except Exception:
-                                    # Se não conseguir recriar cursor, pular esta organização
-                                    for record in records_org:
-                                        record['acumulativo_pec66'] = None
-                                        record['pec66_resultado'] = None
-                                        record['pec66_resultado_arredondado'] = None
-                                        record['caprec'] = None
-                                    continue
-                            
-                            acum_query = f"""
-                                SELECT ordem, valor
-                                FROM {TABLE_NAME}
-                                WHERE organizacao = %s 
-                                    AND esta_na_ordem = TRUE 
-                                    AND valor IS NOT NULL
-                                ORDER BY ordem ASC
-                            """
-                            db_manager.cursor.execute(acum_query, (org,))
-                            
-                            # Buscar resultados de forma segura
-                            all_records_org = []
-                            try:
-                                # Tentar buscar todos os resultados
-                                all_records_org = db_manager.cursor.fetchall()
-                            except (ProgrammingError, Exception) as fetch_error:
-                                # Se "no results to fetch" ou erro de programação relacionado, tratar como lista vazia
-                                error_str = str(fetch_error).lower()
-                                error_msg = str(fetch_error)
-                                
-                                # Verificar se é um erro de "sem resultados" (situação normal)
-                                if ('no results to fetch' in error_str or 
-                                    'no results' in error_str or
-                                    'no row' in error_str or
-                                    'result has already been consumed' in error_str):
-                                    # Não há resultados ou cursor já foi consumido, tratar como lista vazia
-                                    all_records_org = []
-                                else:
-                                    # Outro tipo de erro, verificar se é erro de cursor
-                                    if isinstance(fetch_error, ProgrammingError):
-                                        # Erro de programação, provavelmente cursor já usado
-                                        all_records_org = []
-                                    else:
-                                        # Erro real, re-lançar apenas se for crítico
-                                        # Para a maioria dos casos, tratar como lista vazia
-                                        all_records_org = []
-                            
-                            # Calcular acumulativo progressivo
-                            acumulativo_dict = {}
-                            acumulativo = 0.0
-                            
-                            for row in all_records_org:
-                                ordem = row.get('ordem')
-                                valor = row.get('valor')
-                                if ordem is not None and valor is not None:
-                                    try:
-                                        valor_float = float(valor) if isinstance(valor, (int, float)) else float(str(valor).replace(',', '.'))
-                                        acumulativo += valor_float
-                                        acumulativo_dict[int(ordem)] = acumulativo
-                                    except (ValueError, TypeError):
-                                        pass
-                            
-                            # Adicionar acumulativo aos registros
-                            for record in records_org:
-                                ordem = record.get('ordem')
-                                if ordem is not None:
-                                    try:
-                                        ordem_int = int(ordem)
-                                        record['acumulativo_pec66'] = acumulativo_dict.get(ordem_int)
-                                        
-                                        # Calcular meses e CAPREC
-                                        if record['acumulativo_pec66'] is not None:
-                                            teto_mensal = None
-                                            municipio_org = org.strip()
-                                            estado_org = None
-                                            
-                                            if ' - ' in municipio_org:
-                                                parts = municipio_org.split(' - ', 1)
-                                                municipio_org = parts[0].strip()
-                                                estado_org = parts[1].strip() if len(parts) > 1 else None
-                                            
-                                            search_keys = []
-                                            if estado_org:
-                                                search_keys.append(f"{municipio_org} - {estado_org}")
-                                                search_keys.append(f"{municipio_org}/{estado_org}")
-                                            search_keys.append(municipio_org)
-                                            
-                                            for key in search_keys:
-                                                if key in teto_dict:
-                                                    teto_mensal = teto_dict[key]
-                                                    break
-                                            
-                                            if teto_mensal is None and teto_dict:
-                                                municipio_lower = municipio_org.lower()
-                                                for csv_key, csv_teto in teto_dict.items():
-                                                    if municipio_lower in csv_key.lower() or csv_key.lower() in municipio_lower:
-                                                        if estado_org and estado_org.lower() in csv_key.lower():
-                                                            teto_mensal = csv_teto
-                                                            break
-                                                        elif not estado_org:
-                                                            teto_mensal = csv_teto
-                                                            break
-                                            
-                                            if teto_mensal and teto_mensal > 0:
-                                                meses = record['acumulativo_pec66'] / teto_mensal
-                                                record['pec66_resultado'] = meses
-                                                record['pec66_resultado_arredondado'] = math.ceil(meses)
-                                                record['caprec'] = calculate_caprec(record['pec66_resultado_arredondado'])
-                                            else:
-                                                record['pec66_resultado'] = None
-                                                record['pec66_resultado_arredondado'] = None
-                                                record['caprec'] = None
-                                        else:
-                                            record['pec66_resultado'] = None
-                                            record['pec66_resultado_arredondado'] = None
-                                            record['caprec'] = None
-                                    except (ValueError, TypeError):
-                                        record['acumulativo_pec66'] = None
-                                        record['pec66_resultado'] = None
-                                        record['pec66_resultado_arredondado'] = None
-                                        record['caprec'] = None
-                        except (ProgrammingError, Exception) as acum_error:
-                            # Verificar se é um erro real ou apenas "sem resultados"
-                            error_str = str(acum_error).lower()
-                            error_msg = str(acum_error)
-                            
-                            # Lista de erros que são normais (não devem ser logados como warning)
-                            normal_errors = [
-                                'no results to fetch',
-                                'no results',
-                                'no row',
-                                'result has already been consumed',
-                                'cursor',
-                                'closed'
-                            ]
-                            
-                            is_normal_error = any(normal_err in error_str for normal_err in normal_errors)
-                            
-                            if is_normal_error or isinstance(acum_error, ProgrammingError):
-                                # Não há resultados ou erro de cursor (situação normal)
-                                # Não logar como warning
-                                for record in records_org:
-                                    record['acumulativo_pec66'] = None
-                                    record['pec66_resultado'] = None
-                                    record['pec66_resultado_arredondado'] = None
-                                    record['caprec'] = None
-                            else:
-                                # Erro real e crítico, logar como warning
-                                logger.warning(f"Erro ao calcular acumulativo para {org}: {acum_error}")
-                                for record in records_org:
-                                    record['acumulativo_pec66'] = None
-                                    record['pec66_resultado'] = None
-                                    record['pec66_resultado_arredondado'] = None
-                                    record['caprec'] = None
-                
-                # Para registros sem organização
-                for record in records:
-                    if not record.get('organizacao'):
-                        record['acumulativo_pec66'] = None
-                        record['pec66_resultado'] = None
-                        record['pec66_resultado_arredondado'] = None
-                        record['caprec'] = None
-                        
+                enrich_records_with_pec66(records, db_manager)
             except Exception as pec66_error:
                 logger.error(f"Erro ao calcular PEC 66 para CSV: {pec66_error}")
                 # Continuar mesmo com erro nos cálculos
