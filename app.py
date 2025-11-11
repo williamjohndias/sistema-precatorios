@@ -1977,6 +1977,13 @@ def normalize_updates(updates: Dict[str, Any]) -> Dict[str, Any]:
         normalized[k] = normalize_field_value(k, v)
     return normalized
 
+# Rota para servir arquivos estáticos no Vercel
+@app.route('/static/<path:filename>')
+def serve_static(filename):
+    """Serve arquivos estáticos no Vercel"""
+    from flask import send_from_directory
+    return send_from_directory(app.static_folder, filename)
+
 @app.route('/')
 def index():
     """Página principal - otimizada para Vercel"""
