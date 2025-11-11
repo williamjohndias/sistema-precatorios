@@ -2355,15 +2355,44 @@ def index():
         logger.error(f"Traceback completo: {traceback.format_exc()}")
         try:
             flash(f'Erro ao carregar dados: {str(e)[:100]}', 'error')
-            return render_template('error.html')
-        except:
+            try:
+                return render_template('error.html')
+            except:
+                # Se template não existir, retornar HTML simples
+                return f"""
+                <!DOCTYPE html>
+                <html>
+                <head><title>Erro</title></head>
+                <body>
+                    <h1>Erro no Sistema</h1>
+                    <p>Ocorreu um erro ao carregar os dados.</p>
+                    <p>Erro: {str(e)[:200]}</p>
+                    <p><a href="/">Tentar novamente</a></p>
+                </body>
+                </html>
+                """, 500
+        except Exception as render_error:
             # Se até renderizar erro falhar, retorna resposta simples
-            return f"<h1>Erro</h1><p>Ocorreu um erro: {str(e)[:200]}</p>", 500
+            logger.error(f"Erro ao renderizar página de erro: {render_error}")
+            return f"<h1>Erro</h1><p>Ocorreu um erro: {str(e)[:200]}</p><p>Erro de renderização: {str(render_error)[:100]}</p>", 500
     finally:
         try:
             db_manager.disconnect()
         except:
             pass  # Não deixar erro de desconexão quebrar a resposta
+
+# Handler de erro global para capturar erros não tratados
+@app.errorhandler(404)
+def not_found(error):
+    return render_template('error.html'), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    logger.error(f"Erro interno do servidor: {error}")
+    try:
+        return render_template('error.html'), 500
+    except:
+        return "<h1>Erro Interno</h1><p>Ocorreu um erro no servidor.</p>", 500
 
 @app.route('/update', methods=['POST'])
 def update_data():
