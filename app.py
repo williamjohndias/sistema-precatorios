@@ -2253,6 +2253,7 @@ def index():
             {'name': 'situacao', 'label': 'Situação', 'type': 'character varying', 'editable': True, 'visible': True},
             {'name': 'valor', 'label': 'Valor', 'type': 'numeric', 'editable': True, 'visible': True},
             {'name': 'esta_na_ordem', 'label': 'Está na Ordem', 'type': 'boolean', 'editable': False, 'visible': True},
+            {'name': 'nao_esta_na_ordem', 'label': 'Está na OC', 'type': 'boolean', 'editable': False, 'visible': True},
             {'name': 'acumulativo_pec66', 'label': 'Valor Acumulado', 'type': 'numeric', 'editable': False, 'visible': True},
             {'name': 'pec66_resultado_arredondado', 'label': 'Meses', 'type': 'numeric', 'editable': False, 'visible': True},
             {'name': 'caprec', 'label': 'CAPREC', 'type': 'character varying', 'editable': False, 'visible': True},
