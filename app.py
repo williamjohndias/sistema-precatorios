@@ -1640,43 +1640,29 @@ def calculate_pec66_for_records(records):
 
 def enrich_records_with_pec66(records: List[Dict[str, Any]], db_manager: 'DatabaseManager') -> List[Dict[str, Any]]:
     """
-    Popula os campos relacionados ao PEC 66 (acumulativo, meses e CAPREC) de forma otimizada.
-    Executa uma única consulta por lote de organizações ao invés de iterar individualmente.
+    Popula os campos relacionados ao PEC 66 (acumulativo, meses e CAPREC).
+    Usa abordagem simples: calcula acumulativo por organização individualmente.
     """
     if not records:
         return records
 
-    # Inicializar campos para evitar dados residuais
+    # Inicializar campos
     for record in records:
-        if 'acumulativo_pec66' not in record:
-            record['acumulativo_pec66'] = None
-        if 'pec66_resultado' not in record:
-            record['pec66_resultado'] = None
-        if 'pec66_resultado_arredondado' not in record:
-            record['pec66_resultado_arredondado'] = None
-        if 'caprec' not in record:
-            record['caprec'] = None
+        record['acumulativo_pec66'] = None
+        record['pec66_resultado'] = None
+        record['pec66_resultado_arredondado'] = None
+        record['caprec'] = None
 
-    organizacoes = {record.get('organizacao') for record in records if record.get('organizacao')}
-    if not organizacoes:
-        logger.warning("Nenhuma organização encontrada nos registros")
-        return calculate_pec66_for_records(records)
-
-    # Descobrir a maior ordem necessária para cada organização na página atual
-    max_ordem_por_org: Dict[str, int] = {}
+    # Agrupar registros por organização
+    organizacoes_dict = {}
     for record in records:
         org = record.get('organizacao')
-        ordem = record.get('ordem')
-        if org is None or ordem is None:
-            continue
-        try:
-            ordem_int = int(ordem)
-        except (ValueError, TypeError):
-            continue
-        max_ordem_por_org[org] = max(max_ordem_por_org.get(org, 0), ordem_int)
+        if org:
+            if org not in organizacoes_dict:
+                organizacoes_dict[org] = []
+            organizacoes_dict[org].append(record)
 
-    if not max_ordem_por_org:
-        logger.warning("Nenhuma ordem válida encontrada nos registros")
+    if not organizacoes_dict:
         return calculate_pec66_for_records(records)
 
     try:
@@ -1698,156 +1684,58 @@ def enrich_records_with_pec66(records: List[Dict[str, Any]], db_manager: 'Databa
                 logger.error(f"Erro ao criar cursor: {e}")
                 return calculate_pec66_for_records(records)
 
-        now = datetime.now()
-        acumulativos_por_org: Dict[str, Dict[int, Optional[float]]] = {}
-        to_fetch: Dict[str, int] = {}
-
-        # TEMPORARIAMENTE: sempre buscar do banco para garantir que funcione
-        # TODO: reativar cache depois de confirmar que está funcionando
-        to_fetch = max_ordem_por_org.copy()
-
-        if to_fetch:
-            value_rows = []
-            params: List[Any] = []
-            for org, max_ordem in to_fetch.items():
-                value_rows.append("(%s, %s)")
-                params.extend([org, max_ordem])
-
-            if value_rows:
-                values_clause = ','.join(value_rows)
-                acum_query = f"""
-                    WITH limites(organizacao, max_ordem) AS (
-                        VALUES {values_clause}
-                    )
-                    SELECT
-                        p.organizacao,
-                        p.ordem,
-                        SUM(COALESCE(p.valor, 0)) OVER (
-                            PARTITION BY p.organizacao
-                            ORDER BY p.ordem ASC
-                            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-                        ) AS acumulativo_pec66
-                    FROM {TABLE_NAME} p
-                    JOIN limites l ON l.organizacao = p.organizacao
-                    WHERE p.esta_na_ordem = TRUE
-                      AND p.valor IS NOT NULL
-                      AND p.ordem <= l.max_ordem
-                    ORDER BY p.organizacao, p.ordem
-                """
-
-                logger.info(f"Executando query para {len(to_fetch)} organizações: {list(to_fetch.keys())[:5]}")
-                db_manager.cursor.execute(acum_query, params)
-                acum_rows = db_manager.cursor.fetchall()
-                logger.info(f"Query retornou {len(acum_rows)} linhas de acumulativos")
-
-                fetched: Dict[str, Dict[int, Optional[float]]] = defaultdict(dict)
-                for row in acum_rows:
-                    org = row.get('organizacao')
-                    ordem = row.get('ordem')
-                    acumulativo = row.get('acumulativo_pec66')
-                    if org is None or ordem is None:
-                        continue
-                    try:
-                        ordem_int = int(ordem)
-                    except (ValueError, TypeError):
-                        continue
-                    try:
-                        acumulativo_float = float(acumulativo) if acumulativo is not None else None
-                    except (ValueError, TypeError):
-                        acumulativo_float = None
-                    fetched[org][ordem_int] = acumulativo_float
-                
-                logger.info(f"Processados acumulativos para {len(fetched)} organizações")
-
-                for org, dados in fetched.items():
-                    if dados:
-                        max_ordem_dados = max(dados.keys())
-                    else:
-                        max_ordem_dados = to_fetch.get(org, 0)
-                    acumulativos_por_org[org] = dict(dados)
-                    _pec66_acumulativo_cache[org] = {
-                        'max_ordem': max_ordem_dados,
-                        'acumulativos': dict(dados)
-                    }
-                    _pec66_cache_timestamp[org] = now
-
-                for org, max_ordem in to_fetch.items():
-                    if org not in acumulativos_por_org:
-                        acumulativos_por_org[org] = {}
-                        _pec66_acumulativo_cache[org] = {
-                            'max_ordem': max_ordem,
-                            'acumulativos': {}
-                        }
-                        _pec66_cache_timestamp[org] = now
-
-        # Se não encontrou acumulativos, calcular diretamente do banco para cada organização
-        if not acumulativos_por_org or all(not dados for dados in acumulativos_por_org.values()):
-            logger.warning("Nenhum acumulativo encontrado via query otimizada, calculando individualmente")
-            for org, max_ordem in max_ordem_por_org.items():
-                try:
-                    org_query = f"""
-                        SELECT ordem, valor,
-                            SUM(COALESCE(valor, 0)) OVER (
-                                ORDER BY ordem ASC
-                                ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-                            ) AS acumulativo_pec66
-                        FROM {TABLE_NAME}
-                        WHERE organizacao = %s 
-                            AND esta_na_ordem = TRUE 
-                            AND valor IS NOT NULL
-                            AND ordem <= %s
-                        ORDER BY ordem ASC
-                    """
-                    db_manager.cursor.execute(org_query, (org, max_ordem))
-                    org_rows = db_manager.cursor.fetchall()
-                    
-                    if org not in acumulativos_por_org:
-                        acumulativos_por_org[org] = {}
-                    
-                    for row in org_rows:
-                        ordem = row.get('ordem')
-                        acumulativo = row.get('acumulativo_pec66')
-                        if ordem is not None:
-                            try:
-                                ordem_int = int(ordem)
-                                acumulativo_float = float(acumulativo) if acumulativo is not None else None
-                                acumulativos_por_org[org][ordem_int] = acumulativo_float
-                            except (ValueError, TypeError):
-                                pass
-                    
-                    logger.info(f"Calculados {len(acumulativos_por_org[org])} acumulativos para {org}")
-                except Exception as e:
-                    logger.error(f"Erro ao calcular acumulativo individual para {org}: {e}")
-
-        # Atribuir acumulativos aos registros
-        atribuidos = 0
-        for record in records:
-            org = record.get('organizacao')
-            ordem = record.get('ordem')
-            if org is None or ordem is None:
-                continue
+        # Para cada organização, buscar todos os registros e calcular acumulativo
+        for org, records_org in organizacoes_dict.items():
             try:
-                ordem_int = int(ordem)
-            except (ValueError, TypeError):
-                continue
-            acumulativo = acumulativos_por_org.get(org, {}).get(ordem_int)
-            record['acumulativo_pec66'] = acumulativo
-            if acumulativo is not None:
-                atribuidos += 1
-            # Log para debug (apenas primeiros 5 registros)
-            if atribuidos <= 5:
-                logger.info(f"Atribuído acumulativo para {org} ordem {ordem_int}: {acumulativo}")
-        
-        logger.info(f"Total de {atribuidos} acumulativos atribuídos de {len(records)} registros")
+                # Buscar todos os registros desta organização ordenados por ordem
+                acum_query = f"""
+                    SELECT ordem, valor
+                    FROM {TABLE_NAME}
+                    WHERE organizacao = %s 
+                        AND esta_na_ordem = TRUE 
+                        AND valor IS NOT NULL
+                    ORDER BY ordem ASC
+                """
+                db_manager.cursor.execute(acum_query, (org,))
+                all_records_org = db_manager.cursor.fetchall()
 
-        # Calcular meses e CAPREC
-        logger.info("Chamando calculate_pec66_for_records para calcular meses e CAPREC")
+                # Calcular acumulativo progressivo
+                acumulativo_dict = {}  # ordem -> acumulativo
+                acumulativo = 0.0
+                
+                for row in all_records_org:
+                    ordem = row.get('ordem')
+                    valor = row.get('valor')
+                    if ordem is not None and valor is not None:
+                        try:
+                            valor_float = float(valor) if isinstance(valor, (int, float)) else float(str(valor).replace(',', '.'))
+                            acumulativo += valor_float
+                            acumulativo_dict[int(ordem)] = acumulativo
+                        except (ValueError, TypeError):
+                            pass
+
+                # Atribuir acumulativo aos registros da página atual
+                for record in records_org:
+                    ordem = record.get('ordem')
+                    if ordem is not None:
+                        try:
+                            ordem_int = int(ordem)
+                            record['acumulativo_pec66'] = acumulativo_dict.get(ordem_int)
+                        except (ValueError, TypeError):
+                            pass
+
+            except Exception as e:
+                logger.error(f"Erro ao calcular acumulativo para {org}: {e}")
+                # Continuar com outras organizações mesmo se uma falhar
+
+        # Calcular meses e CAPREC para todos os registros
         enriched = calculate_pec66_for_records(records)
-        logger.info(f"Enriquecimento concluído. Primeiro registro: acumulativo={enriched[0].get('acumulativo_pec66') if enriched else 'N/A'}, meses={enriched[0].get('pec66_resultado_arredondado') if enriched else 'N/A'}, caprec={enriched[0].get('caprec') if enriched else 'N/A'}")
         return enriched
 
     except Exception as e:
         logger.error(f"Erro ao enriquecer registros com PEC 66: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return calculate_pec66_for_records(records)
 
 # Função principal para calcular os resultados
