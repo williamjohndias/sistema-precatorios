@@ -1611,25 +1611,29 @@ def calculate_pec66_for_records(records):
             # acumulativo_float já foi calculado acima
             try:
                 resultado = acumulativo_float / teto_mensal
-                resultado_arredondado = round(resultado)
+                resultado_arredondado = math.ceil(resultado)  # Arredondar para cima
                 record['pec66_resultado'] = resultado
                 record['pec66_resultado_arredondado'] = resultado_arredondado
+                # Calcular CAPREC baseado nos meses arredondados
+                record['caprec'] = calculate_caprec(resultado_arredondado)
 
                 if idx < 5:
                     logger.info(
                         f"PEC66 calculado - Munic: {organizacao} | Acum: {acumulativo_float:.2f} | "
                         f"Teto/12: {teto_mensal:.2f} | Resultado: {resultado:.2f} | "
-                        f"Arredondado: {resultado_arredondado}"
+                        f"Arredondado: {resultado_arredondado} | CAPREC: {record['caprec']}"
                     )
             except Exception as e:
                 logger.error(f"Erro ao calcular PEC66 para {organizacao}: {e}")
                 record['pec66_resultado'] = None
                 record['pec66_resultado_arredondado'] = None
+                record['caprec'] = None
         else:
             if idx < 5:
                 logger.warning(f"Não foi possível encontrar teto_mensal para '{organizacao}' (teto_mensal={teto_mensal})")
             record['pec66_resultado'] = None
             record['pec66_resultado_arredondado'] = None
+            record['caprec'] = None
 
     return records
 
@@ -1767,19 +1771,7 @@ def enrich_records_with_pec66(records: List[Dict[str, Any]], db_manager: 'Databa
                         }
                         _pec66_cache_timestamp[org] = now
 
-        for org, dados in list(acumulativos_por_org.items()):
-            if org not in max_ordem_por_org:
-                continue
-            cache_entry = _pec66_acumulativo_cache.get(org)
-            cache_ts = _pec66_cache_timestamp.get(org)
-            if (
-                cache_entry
-                and cache_ts
-                and cache_entry.get('max_ordem', 0) >= max_ordem_por_org[org]
-                and (now - cache_ts) < PEC66_CACHE_TTL
-            ):
-                acumulativos_por_org[org] = cache_entry.get('acumulativos', {}).copy()
-
+        # Atribuir acumulativos aos registros
         for record in records:
             org = record.get('organizacao')
             ordem = record.get('ordem')
@@ -1789,9 +1781,15 @@ def enrich_records_with_pec66(records: List[Dict[str, Any]], db_manager: 'Databa
                 ordem_int = int(ordem)
             except (ValueError, TypeError):
                 continue
-            record['acumulativo_pec66'] = acumulativos_por_org.get(org, {}).get(ordem_int)
+            acumulativo = acumulativos_por_org.get(org, {}).get(ordem_int)
+            record['acumulativo_pec66'] = acumulativo
+            # Log para debug (apenas primeiros 3 registros)
+            if len([r for r in records if r.get('organizacao') == org]) <= 3:
+                logger.info(f"Atribuído acumulativo para {org} ordem {ordem_int}: {acumulativo}")
 
-        return calculate_pec66_for_records(records)
+        # Calcular meses e CAPREC
+        enriched = calculate_pec66_for_records(records)
+        return enriched
 
     except Exception as e:
         logger.error(f"Erro ao enriquecer registros com PEC 66: {e}")
